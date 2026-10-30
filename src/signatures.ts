@@ -4,6 +4,7 @@ import type { PDFViewer } from "./viewer";
 
 export interface SignatureImage { url: string; width: number; height: number }
 export interface SignatureTarget { id: string; label: string; rect: number[]; kind: "field" | "label" }
+export interface SignaturePlacement { pageNumber: number; rect: number[] }
 const cache = new WeakMap<PDFDocumentProxy, Map<number, Promise<SignatureTarget[]>>>();
 
 export function detectSignatureTargets(pdf: PDFDocumentProxy, pageNumber: number) {
@@ -52,35 +53,72 @@ export function fitSignature(signature: SignatureImage, bounds: number[]) {
   return [positionX, positionY, positionX + fittedWidth, positionY + fittedHeight];
 }
 
-export async function placeSignature(viewer: PDFViewer, pdf: PDFDocumentProxy, pageNumber: number, signature: SignatureImage, rect: number[]) {
+export function mapRectToPage(rect: number[], sourceView: number[], targetView: number[]) {
+  const sourceWidth = sourceView[2] - sourceView[0];
+  const sourceHeight = sourceView[3] - sourceView[1];
+  const targetWidth = targetView[2] - targetView[0];
+  const targetHeight = targetView[3] - targetView[1];
+  const mapX = (value: number) => targetView[0] + (value - sourceView[0]) / sourceWidth * targetWidth;
+  const mapY = (value: number) => targetView[1] + (value - sourceView[1]) / sourceHeight * targetHeight;
+  return [mapX(rect[0]), mapY(rect[1]), mapX(rect[2]), mapY(rect[3])];
+}
+
+async function addSignature(viewer: PDFViewer, pdf: PDFDocumentProxy, placement: SignaturePlacement, signature: SignatureImage) {
+  viewer.currentPageNumber = placement.pageNumber;
+  let layer;
+  for (let attempt = 0; attempt < 120; attempt++) {
+    if (viewer.pdfDocument !== pdf) throw new Error("The document changed.");
+    layer = viewer.getPageView(placement.pageNumber - 1)?.annotationEditorLayer?.annotationEditorLayer;
+    if (layer) break;
+    await new Promise(resolve => setTimeout(resolve, 25));
+  }
+  if (!layer) throw new Error(`Page ${placement.pageNumber} isn't ready for signatures. Please try again.`);
+  const { pageX, pageY } = layer.viewport.rawDims;
+  const localRect = placement.rect.map((coordinate, index) => coordinate - (index % 2 === 0 ? pageX : pageY));
+  const editor = await layer.deserialize({ annotationType: AnnotationEditorType.STAMP, pageIndex: placement.pageNumber - 1,
+    rect: localRect, rotation: 0, bitmapUrl: signature.url, isSvg: false,
+    accessibilityData: { decorative: false, altText: "Handwritten signature" } });
+  if (!editor || viewer.pdfDocument !== pdf) throw new Error(`Couldn't add the signature to page ${placement.pageNumber}.`);
+  layer.add(editor);
+  for (let attempt = 0; attempt < 120; attempt++) {
+    if (editor.div?.querySelector("canvas")) return editor;
+    await new Promise(resolve => setTimeout(resolve, 25));
+  }
+  editor.remove();
+  throw new Error(`Couldn't load the signature image on page ${placement.pageNumber}. Please try again.`);
+}
+
+export async function signaturePlacements(pdf: PDFDocumentProxy, pageNumber: number, signature: SignatureImage, bounds: number[], allPages: boolean) {
+  if (!allPages) return [{ pageNumber, rect: fitSignature(signature, bounds) }];
+  const source = await pdf.getPage(pageNumber);
+  const placements: SignaturePlacement[] = [];
+  for (let targetPage = 1; targetPage <= pdf.numPages; targetPage++) {
+    const target = targetPage === pageNumber ? source : await pdf.getPage(targetPage);
+    placements.push({ pageNumber: targetPage, rect: fitSignature(signature, mapRectToPage(bounds, source.view, target.view)) });
+  }
+  return placements;
+}
+
+export async function placeSignatures(viewer: PDFViewer, pdf: PDFDocumentProxy, signature: SignatureImage, placements: SignaturePlacement[]) {
   if (viewer.pdfDocument !== pdf) throw new Error("The document changed. Open Sign again.");
-  viewer.currentPageNumber = pageNumber;
+  const originalPage = viewer.currentPageNumber;
+  const added: { remove(): void }[] = [];
   viewer.annotationEditorMode = { mode: AnnotationEditorType.STAMP };
   try {
-    let layer;
-    for (let attempt = 0; attempt < 120; attempt++) {
-      if (viewer.pdfDocument !== pdf) throw new Error("The document changed.");
-      layer = viewer.getPageView(pageNumber - 1)?.annotationEditorLayer?.annotationEditorLayer;
-      if (layer) break;
-      await new Promise(resolve => setTimeout(resolve, 25));
-    }
-    if (!layer) throw new Error("The page isn't ready for signatures. Please try again.");
-    const { pageX, pageY } = layer.viewport.rawDims;
-    const localRect = rect.map((coordinate, index) => coordinate - (index % 2 === 0 ? pageX : pageY));
-    const editor = await layer.deserialize({ annotationType: AnnotationEditorType.STAMP, pageIndex: pageNumber - 1,
-      rect: localRect, rotation: 0, bitmapUrl: signature.url, isSvg: false,
-      accessibilityData: { decorative: false, altText: "Handwritten signature" } });
-    if (!editor || viewer.pdfDocument !== pdf) throw new Error("Couldn't add the signature to this document.");
-    layer.add(editor);
-    for (let attempt = 0; attempt < 120; attempt++) {
-      if (editor.div?.querySelector("canvas")) return;
-      await new Promise(resolve => setTimeout(resolve, 25));
-    }
-    editor.remove();
-    throw new Error("Couldn't load the signature image. Please try again.");
+    for (const placement of placements) added.push(await addSignature(viewer, pdf, placement, signature));
+  } catch (reason) {
+    for (const editor of added.reverse()) editor.remove();
+    throw reason;
   } finally {
-    if (viewer.pdfDocument === pdf) viewer.annotationEditorMode = { mode: AnnotationEditorType.NONE };
+    if (viewer.pdfDocument === pdf) {
+      viewer.annotationEditorMode = { mode: AnnotationEditorType.NONE };
+      viewer.currentPageNumber = originalPage;
+    }
   }
+}
+
+export async function placeSignature(viewer: PDFViewer, pdf: PDFDocumentProxy, pageNumber: number, signature: SignatureImage, rect: number[]) {
+  await placeSignatures(viewer, pdf, signature, [{ pageNumber, rect }]);
 }
 
 export function cleanSignature(source: HTMLCanvasElement, crop: number[], threshold: number): SignatureImage {

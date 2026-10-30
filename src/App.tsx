@@ -28,7 +28,7 @@ import { SearchBar, type FindResult } from "./SearchBar";
 import { AboutDialog, InfoDialog, OpenUrlDialog, PasswordDialog, ShortcutsDialog, parseWebUrl } from "./Dialogs";
 import { SignatureDialog } from "./SignatureDialog";
 import { SettingsDialog } from "./SettingsDialog";
-import { detectSignatureTargets, placeSignature, type SignatureTarget } from "./signatures";
+import { detectSignatureTargets, placeSignatures, signaturePlacements, type SignatureTarget } from "./signatures";
 import { keepDrawingPointer } from "./drawing";
 
 type Tool = "select" | "highlight" | "ink" | "freetext";
@@ -1192,9 +1192,11 @@ export default function App() {
       {doc && imageView && <ImageViewer pdf={doc.pdf} target={imageView} onClose={() => setImageView(null)} />}
       {dialog === "url" && <OpenUrlDialog onClose={() => setDialog(null)} onSubmit={(url) => { setDialog(null); openUrl(url); }} />}
       {doc && signing && <SignatureDialog key={doc.id + ":" + page} pdf={doc.pdf} pageNumber={page} targets={signatureTargets}
-        onClose={() => setSigning(false)} onApprove={async (signature, rect) => {
-          await placeSignature(viewerRef.current!, doc.pdf, page, signature, rect);
-          setDirty(true); setSignatureDismissed(true); flash(keys("Signature added. Ctrl+Z to undo; Save copy to export."));
+        onClose={() => setSigning(false)} onApprove={async (signature, bounds, allPages) => {
+          const placements = await signaturePlacements(doc.pdf, page, signature, bounds, allPages);
+          await placeSignatures(viewerRef.current!, doc.pdf, signature, placements);
+          setDirty(true); setSignatureDismissed(true);
+          flash(allPages ? `Signature added to all ${placements.length} pages. Save a copy to export.` : keys("Signature added. Ctrl+Z to undo; Save copy to export."));
         }} />}
       {doc && !signing && signatureTargets.length > 0 && !signatureDismissed && <div className="signature-suggestion" role="status">
         <span>{signatureTargets[0].kind === "field" ? "Signature field detected" : "Possible signature area"} on page {page}</span>

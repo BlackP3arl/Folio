@@ -1257,9 +1257,16 @@ kbd {
 .signature-field select { min-width: 0; width: 100%; padding: 8px; background: var(--surface); color: var(--text); border: 1px solid var(--line-strong); border-radius: 7px; font: inherit; }
 .signature-page-stage { display: flex; justify-content: center; min-width: 0; padding: 2px 0; }
 .signature-page { position: relative; max-width: 100%; background: white; box-shadow: var(--page-shadow); flex-shrink: 1; }
-.signature-page[data-placeable] { cursor: crosshair; }
+.signature-page[data-placeable] { cursor: crosshair; touch-action: none; user-select: none; }
 .signature-page-background { display: block; width: 100%; height: 100%; pointer-events: none; }
+.signature-placeholder { position: absolute; border: 2px dashed var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); box-shadow: 0 0 0 1px #fff8 inset; pointer-events: none; }
 .signature-placement { position: absolute; outline: 1.5px dashed var(--accent); outline-offset: 3px; pointer-events: none; }
+.signature-repeat { display: grid; gap: 7px; padding: 11px; border: 1px solid var(--accent); border-radius: 9px; background: var(--accent-soft); }
+.signature-repeat strong { color: var(--text); font-size: 11px; }
+.signature-repeat > span { color: var(--text-2); font-size: 10px; line-height: 1.5; }
+.signature-repeat > div { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+.signature-repeat button { padding: 7px 8px; border: 1px solid var(--line-strong); border-radius: 7px; background: var(--surface); color: var(--text-2); font: inherit; font-size: 10px; }
+.signature-repeat button:hover, .signature-repeat button.on { border-color: var(--accent); color: var(--accent-text); background: var(--surface); }
 .signature-page-loading { display: grid; place-content: center; justify-items: center; gap: 10px; min-height: 310px; color: var(--text-3); font-size: 11px; }
 .signature-error { padding: 10px 24px; flex-shrink: 0; }
 .signature-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 24px; border-top: 1px solid var(--line); flex-shrink: 0; }
