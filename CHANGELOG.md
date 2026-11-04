@@ -1,5 +1,120 @@
 # Changelog
 
+## 1.15.1
+
+- After you update Folio, **What's new** shows the changes once. If you skip versions, it includes the releases you missed.
+- Open **Settings → About → View changelog** to browse five releases at a time. Expand a version to read its notes, or follow **View releases on GitHub**.
+- Closing the Ask AI panel now stops the answer in progress.
+
+## 1.15.0
+
+- Choose **Edit mode** to change text in a PDF or replace an embedded picture with a PNG or JPEG. Choose **Save copy** to keep the edited PDF.
+- Open **More → Version history** to see what changed and reopen or download an earlier copy.
+
+## 1.14.0
+
+- Bookmark a page with the ribbon beside its thumbnail in **Pages**. Choose **Bookmarked** to see your saved pages and jump to one.
+- Choose **Draw** to add rectangles, ovals, and arrows in your preferred ink color. **Save a copy** includes them in the PDF.
+- In **Notes → Export**, copy your reading notes as Markdown or save them as JSON. The JSON includes page numbers, bookmarks, highlight colors, and drawing coordinates.
+
+## 1.13.1
+
+- Choose **Highlight** in the toolbar to mark each passage as soon as you finish selecting it. Switch colors between passages, then choose **Done** or press `Esc` to return to reading.
+
+## 1.13.0
+
+- Select or drop several PDFs to open them in one window. Each document keeps its page, zoom, and unsaved edits when you switch tabs.
+- The tab strip appears when you open a second tab and disappears when only one remains. Choose **More → New tab** to open another document.
+
+## 1.12.2
+
+- Folio starts recognizing scanned text in the background when you open a PDF. Jumping to a page gives it priority.
+  A message above the page controls shows when its text is still being prepared.
+- Text selections stay visible on scans in **PDF dark mode**. You can start or end a drag just outside the printed words.
+- Three-digit page numbers fit in the page field, and the macOS unsaved-work prompt shows the Mac save shortcut.
+
+## 1.12.1
+
+- On Windows, click **Restart** once to update. Folio shows a progress message and reopens the updated copy when installation finishes.
+
+## 1.12.0
+
+- Select, copy, and highlight English text on scanned pages in the PDF you already have open. Folio runs OCR
+  on your device as those pages come into view, even offline.
+- Open **⋯ → PDF dark mode** to dim the pages while keeping photos and figures in color.
+
+## 1.11.0
+
+- Turn on **Scroll one page at a time** in Settings to turn pages with each mouse wheel click or trackpad swipe.
+- **Copy response** copies an Ask AI answer with its Markdown formatting and page citations.
+- Choose **Reorder pages** in Pages or Outline, drag a page or enter its new position, then save and open the
+  reordered PDF copy. Bookmarks, annotations and filled form fields follow their pages.
+
+## 1.10.9
+
+- Opening a Word document now checks the source and converted PDF before reusing a saved copy. Folio also
+  protects private output files and limits the work a document can cause during conversion.
+- PDF imports enforce the size limit before buffering the whole file and accept up to 10,000 pages. Desktop URL
+  imports check the address they actually connect to, including redirects and images on imported webpages.
+- Recent previews, annotations and Ask AI conversations follow the full document contents. Folio keeps older
+  records for PDFs over 2 MiB on disk when it cannot safely match them. Ask AI keeps document text separate from its instructions.
+- The release process verifies the source tag, build and platform artifacts. Linux package users receive a second
+  trusted apt key through an update signed by the existing key. Install this release before the signing-key switch.
+
+## 1.10.8
+
+- Clicking a link in a PDF shows where it goes and asks before opening your browser or mail app. A PDF can make a link
+  invisible and as large as the page, so any click could open a site.
+- A pasted or dropped link fills in **Open from URL** instead of opening straight away, so you can check it first.
+- Links and webpages can't reach your computer or local network (your router, a NAS, a dev server) unless you say so.
+  Before, a web address that only pointed there by name got through.
+- Word documents that Folio converts itself are read in a separate process. A document built to use up memory now
+  fails with a message instead of closing Folio. LibreOffice converts with macros and linked content turned off.
+
+## 1.10.7
+
+- Highlighting keeps working after your first highlight. Before, it could stop until you reopened the document, and
+  on a busy computer a highlight could be dropped.
+
+## 1.10.6
+
+- Open Word documents (.docx and .doc) in Folio: right-click and choose **Open with → Folio**, use **Open**, or drop
+  one in. Folio converts it to a PDF, saves it next to the original ("Report.docx" gets "Report.pdf"), and opens it.
+  It uses Microsoft Word or LibreOffice when installed, otherwise its own converter for .docx. Word stays the
+  default app for double-clicking.
+
+## 1.10.5
+
+- Ask AI shows equations as math, in answers and in saved chats.
+- Printing no longer marks unsaved highlights and signatures as saved, so Folio still asks before you open another
+  document over them.
+- Highlighting text on a page that's still loading works. Before, it could drop the highlight and your selection.
+- Opening a PDF uses less memory by avoiding an extra copy of the document.
+- Downloads include fewer unused resources without changing Folio's language or PDF support.
+- The Ask AI welcome card stays inside its panel instead of covering the document.
+
+## 1.10.3
+
+- **Copy** buttons work in the desktop app. Copying selected text, **Copy all** in Notes, and **Copy image** said
+  "Copied" but left the clipboard unchanged.
+- Text boxes come back when you reopen a document. Before, they reopened empty and the next auto-save removed them.
+- **Save a copy** and **Print** include every saved mark, not just the ones on pages you'd scrolled to since reopening.
+- Opening another document over a placed signature, or over markup on a password-protected PDF, asks first instead of
+  discarding it.
+
+## 1.10.2
+
+- **What's new** in Settings shows this changelog inside Folio.
+- Opening, saving, or printing a document that fails now says so instead of doing nothing, and a Recent entry that
+  can no longer be read is removed with a message. On the desktop, if printing fails, Folio saves a copy instead.
+- Opening a PDF from your file manager no longer freezes Folio while it loads, and files over 300 MB are refused with
+  a message (the same limit as links).
+- PDFs over 50 MB still open normally but aren't kept in Recent, so it no longer stores gigabytes of copies on disk.
+- Smaller fixes: downloaded and converted files never get a name Windows reserves (like `CON.pdf`); on macOS, opening
+  the install folder shows the folder containing Folio rather than the inside of the app; the ChatGPT sign-in ignores
+  malformed requests instead of failing; and the browser edition gets the same content security policy and 300 MB
+  link limit as the desktop app.
+
 ## 1.10.1
 
 - Drawing keeps the pointer captured during a stroke, including when it crosses the page boundary, and recovers

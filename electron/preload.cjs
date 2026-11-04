@@ -1,31 +1,45 @@
 // Minimal bridge between the Folio page and the desktop shell.
-const { contextBridge, ipcRenderer } = require("electron");
+const { contextBridge, ipcRenderer, webUtils } = require("electron");
 
 contextBridge.exposeInMainWorld("folioDesktop", {
-  /** Called with { name, data: Uint8Array } whenever a PDF is opened from Explorer. */
+  /** Called with (name, data, note?) whenever a PDF is opened from Explorer, or a Word document has been converted. */
   onOpenFile(callback) {
-    const listener = (_e, file) => callback(file.name, new Uint8Array(file.data));
+    const listener = (_e, file) => callback(file.name, new Uint8Array(file.data), file.note ?? undefined, file.token);
     ipcRenderer.on("folio:open-file", listener);
     return () => ipcRenderer.removeListener("folio:open-file", listener);
   },
+  /** Called with the file name when a Word document starts converting, and with a message if it fails. */
+  onConverting(callback) {
+    const listener = (_e, file) => callback(file.name, file.token);
+    ipcRenderer.on("folio:converting", listener);
+    return () => ipcRenderer.removeListener("folio:converting", listener);
+  },
+  onOpenFailed(callback) {
+    const listener = (_e, failure) => callback(failure.message, failure.token);
+    ipcRenderer.on("folio:open-failed", listener);
+    return () => ipcRenderer.removeListener("folio:open-failed", listener);
+  },
+  onTabCommand(callback) {
+    const listener = (_e, command) => callback(command);
+    ipcRenderer.on("folio:tab-command", listener);
+    return () => ipcRenderer.removeListener("folio:tab-command", listener);
+  },
+  /** Returns the converted PDF to the tab that opened the Word document. */
+  openDocument: (file) => ipcRenderer.invoke("folio:open-document", webUtils.getPathForFile(file)),
   ready: () => ipcRenderer.invoke("folio:ready"),
   platform: process.platform,
   openDownload: () => ipcRenderer.invoke("folio:open-download"),
-  /** Downloads a PDF from an http(s) link; resolves to { name, data: Uint8Array }. */
+  /** Downloads a PDF from an http(s) link; resolves to { name, data: Uint8Array }, or null if the user said no. */
   async fetchPdf(url) {
     const file = await ipcRenderer.invoke("folio:fetch-pdf", url);
+    if (file.cancelled) return null;
     if (file.error) throw new Error(file.error);
     return { name: file.name, data: new Uint8Array(file.data) };
   },
   getAppInfo: () => ipcRenderer.invoke("folio:app-info"),
+  getUpstreamReleases: () => ipcRenderer.invoke("folio:upstream-releases"),
   openInstallation: () => ipcRenderer.invoke("folio:open-installation"),
   setTheme: (theme) => ipcRenderer.send("folio:theme", theme),
-  getVersion: () => ipcRenderer.invoke("folio:version"),
-  /** Called with the new version once an update has been downloaded and is ready to install. */
-  onUpdateReady(callback) {
-    ipcRenderer.on("folio:update-ready", (_e, version) => callback(version));
-    ipcRenderer.invoke("folio:update-status").then((version) => version && callback(version));
-  },
   installUpdate: () => ipcRenderer.send("folio:install-update"),
   /** Called with the updater state ({ state, version?, percent?, message? }) now and whenever it changes. */
   onUpdateStatus(callback) {

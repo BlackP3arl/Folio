@@ -1,14 +1,14 @@
-/* Highlights, notes, and Ask AI. Uses the design tokens from styles.css. */
+/* Reading tools: highlights, notes, Ask AI, images, the More menu, Settings. Uses the design tokens from styles.css. */
 
 /* ── Selection popover ──────────────────────────────────────────────── */
 .selection-popover {
   position: absolute;
   z-index: 12;
   display: flex;
-  align-items: center;
-  gap: 4px;
-  height: 44px;
-  padding: 0 6px 0 9px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  padding: 6px 6px 8px 9px;
   border-radius: 12px;
   background: color-mix(in srgb, var(--surface) 92%, transparent);
   backdrop-filter: blur(16px) saturate(1.6);
@@ -37,12 +37,6 @@
 }
 .swatch-btn.on {
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12), 0 0 0 2px var(--surface), 0 0 0 3.5px var(--text-3);
-}
-.selection-popover .divider {
-  width: 1px;
-  height: 20px;
-  margin: 0 4px;
-  background: var(--line-strong);
 }
 .pop-btn {
   display: flex;
@@ -104,6 +98,11 @@
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
+/* These grow with their text (see GrowingTextarea), so they never scroll. */
+.doc-note,
+.mark-note {
+  overflow: hidden;
+}
 .note-actions {
   display: flex;
   align-items: center;
@@ -148,9 +147,6 @@
   background: var(--accent-soft);
   color: var(--accent-text);
 }
-.sidebar-tabs button {
-  white-space: nowrap;
-}
 .notes-panel {
   display: flex;
   flex-direction: column;
@@ -167,6 +163,7 @@
   letter-spacing: 0.06em;
   color: var(--text-3);
 }
+.notes-head .menu.dropdown { min-width: 155px; text-transform: none; letter-spacing: normal; }
 .link.small {
   padding: 4px 6px;
   font-size: 12px;
@@ -354,7 +351,7 @@
   border-radius: 4px;
   background: var(--hover);
 }
-.ai-card.welcome {
+.ai-card.ai-welcome {
   border-color: var(--accent-soft);
 }
 .ai-card-actions {
@@ -412,7 +409,35 @@
   line-height: 1.55;
   color: var(--text);
   overflow-wrap: anywhere;
+  min-width: 0;
 }
+.msg.assistant { flex-shrink: 0; }
+.msg .copy-response { margin-top: 6px; color: var(--text-3); }
+.msg h1, .msg h2, .msg h3, .msg h4, .msg h5, .msg h6 {
+  margin: 12px 0 8px;
+  font-size: inherit;
+  line-height: inherit;
+}
+.msg pre {
+  max-width: 100%;
+  overflow-x: auto;
+  padding: 8px;
+  border-radius: 6px;
+  background: var(--hover);
+  white-space: pre;
+  overflow-wrap: normal;
+}
+.msg pre code { padding: 0; background: none; }
+.msg .katex { font-size: 1.08em; overflow-wrap: normal; }
+.msg .katex-display {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  margin: 10px 0;
+  padding: 5px 0;
+}
+.msg .katex-display > .katex { text-align: left; }
+.msg .katex-error { color: var(--text-2) !important; white-space: pre-wrap; }
 .msg p {
   margin: 0 0 8px;
 }
@@ -579,8 +604,7 @@
   border-radius: 6px;
   padding: 2px 4px;
 }
-.ai-meta a,
-.linkish {
+.ai-meta a {
   color: var(--text-2);
   text-decoration: underline;
   text-underline-offset: 2px;
@@ -601,18 +625,6 @@
   }
 }
 
-/* One sidebar width for every tab, so switching tabs never resizes anything. */
-.sidebar-tabs button {
-  flex: 1 1 0;
-  min-width: 0;
-}
-.sidebar-tabs button svg {
-  display: none;
-}
-.mark-note,
-.doc-note {
-  overflow: hidden;
-}
 .ai-checking {
   margin: 0;
   font-size: 12.5px;
@@ -636,11 +648,12 @@
 .app[data-night] .canvasWrapper > svg {
   z-index: 2;
 }
+/* The live text selection must also be visible over a full-page scan. */
+.app[data-night] .canvasWrapper > .selection {
+  z-index: 3;
+}
 .app[data-night] .canvasWrapper svg.highlight {
   --blend-mode: screen;
-}
-.thumb-frame {
-  position: relative;
 }
 
 /* ── Top bar: More menu ─────────────────────────────────────────────── */
@@ -666,17 +679,7 @@
 .menu-label {
   flex: 1;
 }
-.menu.dropdown button[aria-checked="true"] > svg:not(:first-child) {
-  color: var(--accent-text);
-}
 /* Popover rows, note field, and the remove action. */
-.selection-popover {
-  flex-direction: column;
-  align-items: stretch;
-  height: auto;
-  padding: 6px 6px 8px 9px;
-  gap: 6px;
-}
 .pop-row {
   display: flex;
   align-items: center;
@@ -714,9 +717,6 @@
 }
 
 /* ── Images: click menu and full-window viewer ──────────────────────── */
-.image-menu {
-  width: auto;
-}
 .image-viewer {
   position: fixed;
   inset: 0;
@@ -781,7 +781,8 @@
 }
 
 /* ── Settings ───────────────────────────────────────────────────────── */
-.modal:has(.settings) {
+.modal:has(.settings),
+.modal:has(.changelog) {
   width: min(560px, calc(100vw - 32px));
   max-height: calc(100dvh - 48px);
 }
@@ -888,3 +889,81 @@
 .upstream-request textarea { box-sizing: border-box; width: 100%; min-height: 150px; resize: vertical; padding: 10px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface-2); color: var(--text); font: 11px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; }
 .upstream-request p { margin: 0; color: var(--text-3); font-size: 11px; }
 .upstream-history { justify-self: start; }
+/* ── What's new ─────────────────────────────────────────────────────── */
+.changelog {
+  padding: 0 14px 6px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+.changelog section + section {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.modal:has(.changelog) {
+  display: flex;
+  flex-direction: column;
+}
+.modal .changelog {
+  overflow-y: auto;
+}
+.changelog details + details { border-top: 1px solid var(--line); }
+.changelog summary {
+  padding: 10px 0;
+  cursor: pointer;
+  font-weight: 650;
+  color: var(--text);
+}
+.changelog details ul { padding-bottom: 12px; }
+.history-footer {
+  margin: 0 14px;
+  padding: 10px 0 4px;
+  border-top: 1px solid var(--line);
+  text-align: center;
+  color: var(--text-2);
+  font-size: 12px;
+}
+.history-footer nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.history-footer a { color: var(--accent-text); }
+.upgrade-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 12px 14px 2px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  font-size: 12px;
+  color: var(--text-2);
+}
+.changelog h3 {
+  margin: 0 0 6px;
+  font-size: 13.5px;
+  font-weight: 650;
+  color: var(--text);
+}
+.changelog ul {
+  margin: 0;
+  padding-left: 18px;
+}
+.changelog li + li {
+  margin-top: 6px;
+}
+.changelog strong {
+  color: var(--text);
+  font-weight: 620;
+}
+.changelog code {
+  font-size: 12px;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: var(--hover);
+}

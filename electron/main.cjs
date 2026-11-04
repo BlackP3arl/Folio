@@ -1,14 +1,22 @@
-// Folio desktop shell: one window, PDFs opened from Explorer / "Open with", files served over app://.
-const { app, BrowserWindow, protocol, net, ipcMain, dialog, shell, screen } = require("electron");
+// Folio desktop shell: one window, PDFs (and Word documents, converted) opened from Explorer / "Open with",
+// files served over app://.
+const { app, BrowserWindow, protocol, net, ipcMain, dialog, shell, screen, session } = require("electron");
+const crypto = require("node:crypto");
 const path = require("node:path");
 const fs = require("node:fs");
 const { pathToFileURL } = require("node:url");
-const { isIP } = require("node:net");
 const { autoUpdater } = require("electron-updater");
 const ai = require("./ai.cjs");
 const { captureWebpage } = require("./webpage.cjs");
+const { guardSession, resolveDestination } = require("./network.cjs");
+const { safePdfName } = require("./filenames.cjs");
+const { csp } = require("./csp.cjs");
+const { WORD_FILE, openWord } = require("./convert.cjs");
+const { MAX_DOCUMENT_BYTES, checkDiskPath, readRegular } = require("./document-files.cjs");
 
 if (!app.isPackaged && process.env.FOLIO_TEST_USER_DATA) app.setPath("userData", process.env.FOLIO_TEST_USER_DATA);
+// Automated tests drive a window that never appears, so a local run doesn't take over the screen or focus.
+const TEST_HIDDEN = !app.isPackaged && process.env.FOLIO_TEST_HIDDEN === "1";
 
 const DIST = path.join(__dirname, "..", "dist");
 // Development only (e.g. http://localhost:5173); ignored by installed builds.
@@ -17,22 +25,9 @@ const isAppUrl = (url) => {
   try { return url.startsWith("app://folio/") || (!!DEV_URL && new URL(url).origin === DEV_URL); } catch { return false; }
 };
 
-// The page only loads its own bundled code; PDFs can't bring in scripts or reach the network.
-// Inline styles are needed by pdf.js page layout; wasm by its image decoders; blob: frames for printing.
-const CSP = [
-  "default-src 'self'",
-  "script-src 'self' 'wasm-unsafe-eval'",
-  "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob:",
-  "font-src 'self' data: blob:",
-  "connect-src 'self' data: blob:",
-  "worker-src 'self' blob:",
-  "media-src 'self' blob: mediastream:",
-  "frame-src 'self' blob:",
-  "object-src 'self' blob:",
-  "base-uri 'none'",
-  "form-action 'none'",
-].join("; ");
+// Sent as a response header on app:// (see csp.cjs). The page never needs the network here: PDFs are
+// read from disk, and "Open a link" downloads happen in this process.
+const CSP = csp({ connect: "'self' data: blob:" });
 
 function isTrustedSender(event) {
   if (!win || event.sender !== win.webContents) return false;
@@ -50,50 +45,84 @@ const TITLEBAR = {
 const IS_MAC = process.platform === "darwin";
 const IS_LINUX = process.platform === "linux";
 const RELEASES_PAGE = "https://github.com/Forward-Future/folio-releases/releases/latest";
+const UPSTREAM_RELEASES_API = "https://api.github.com/repos/Forward-Future/folio-releases/releases?per_page=20";
 
 protocol.registerSchemesAsPrivileged([
   { scheme: "app", privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
 ]);
 
 let win = null;
-let pendingFile = pdfFromArgs(process.argv);
+const OPENABLE = /\.(pdf|docx?)$/i;
+const pendingFiles = filesFromArgs(process.argv);
 let rendererReady = false;
 
 // macOS hands files to the app through "open-file" (Finder, the Dock, "Open With") rather than argv.
 // It can fire before the app is ready, so register it right away.
 app.on("open-file", (event, file) => {
   event.preventDefault();
-  if (!/\.pdf$/i.test(file)) return;
+  if (!OPENABLE.test(file)) return;
   if (win && rendererReady) {
-    if (win.isMinimized()) win.restore();
-    win.focus();
-    sendFile(file);
+    if (!TEST_HIDDEN) {
+      if (win.isMinimized()) win.restore();
+      win.focus();
+    }
+    void sendFile(file);
   } else {
-    pendingFile = file;
+    pendingFiles.push(file);
     if (app.isReady() && !win) createWindow();
   }
 });
 
-function pdfFromArgs(argv) {
-  const file = argv.slice(1).find((a) => !a.startsWith("-") && /\.pdf$/i.test(a) && fs.existsSync(a));
-  return file ? path.resolve(file) : null;
+function filesFromArgs(argv, cwd = process.cwd()) {
+  return argv.slice(1).filter(a => !a.startsWith("-") && OPENABLE.test(a))
+    .map(file => path.resolve(cwd, file)).filter(file => fs.existsSync(file));
 }
 
-function sendFile(file) {
-  if (!file || !win) return;
+// The read is async and size-capped like URL downloads: a huge file or a slow network
+// share shouldn't freeze the main process or balloon memory in two processes.
+async function sendFiles(files) {
+  for (const file of files) await sendFile(file);
+}
+
+async function sendFile(file) {
+  const target = win;
+  if (!file || !target) return;
+  if (WORD_FILE.test(file)) return sendWordFile(file, target);
   try {
-    const data = fs.readFileSync(file);
-    win.webContents.send("folio:open-file", { name: path.basename(file), data });
+    checkDiskPath(file);
+    const data = await readRegular(await fs.promises.realpath(file));
+    if (!target.isDestroyed()) target.webContents.send("folio:open-file", { name: path.basename(file), data });
   } catch (err) {
-    dialog.showErrorBox("Couldn't open file", `${file}\n\n${err.message}`);
+    dialog.showErrorBox("Couldn't open file", `${file}\n\n${err.userMessage ?? err.message}`);
   }
+}
+
+// A Word document opens as a PDF, saved next to it ("Report.docx" gets "Report.pdf") so it's there to share
+// afterwards. A folder Folio can't write to (a read-only share) just means the PDF isn't kept.
+async function sendWordFile(file, target) {
+  const send = (channel, payload) => { if (!target.isDestroyed()) target.webContents.send(channel, payload); };
+  const original = path.basename(file);
+  const token = crypto.randomUUID();
+  send("folio:converting", { name: original, token });
+  try {
+    send("folio:open-file", { ...await openWord(file, (msg) => logConvert(`${file}: ${msg}`)), token });
+  } catch (error) {
+    logConvert(`${file}: ${error?.stack || error}`);
+    send("folio:open-failed", { token, message: `Couldn't convert “${original}” to PDF. ${error?.userMessage ?? ""}`.trim() });
+  }
+}
+
+function logConvert(msg) {
+  try {
+    fs.appendFileSync(path.join(app.getPath("userData"), "convert.log"), `${new Date().toISOString()} ${msg}\n`);
+  } catch {}
 }
 
 // ── Auto-update ──────────────────────────────────────────────────────
 // Installed copies check GitHub Releases (Forward-Future/folio-releases, see "publish" in package.json)
 // on launch and every few hours, download new versions in the background, and install them on quit
 // or when the user clicks "Restart" in the update banner. Progress is shown on the home screen and
-// logged to %APPDATA%\Folio\update.log.
+// logged to update.log in the app's user-data folder.
 let updateReady = null;
 let updateStatus = { state: "idle" };
 let updatesEnabled = false;
@@ -161,7 +190,12 @@ function installKind() {
 }
 
 function installLocation() {
-  return path.dirname(process.env.PORTABLE_EXECUTABLE_FILE || process.env.APPIMAGE || app.getPath("exe"));
+  if (process.env.PORTABLE_EXECUTABLE_FILE || process.env.APPIMAGE) {
+    return path.dirname(process.env.PORTABLE_EXECUTABLE_FILE || process.env.APPIMAGE);
+  }
+  const exeDir = path.dirname(app.getPath("exe"));
+  // Inside a packaged .app the exe lives in Contents/MacOS; the install folder is where the .app sits.
+  return IS_MAC && /\.app[\/\\]Contents[\/\\]MacOS$/.test(exeDir) ? path.resolve(exeDir, "..", "..", "..") : exeDir;
 }
 
 // macOS only installs updates signed with an Apple Developer ID. Release builds made with the Developer ID
@@ -197,7 +231,6 @@ function setupAutoUpdate() {
   autoUpdater.on("update-downloaded", (info) => {
     updateReady = info.version;
     setUpdateStatus({ state: "ready", version: info.version });
-    win?.webContents.send("folio:update-ready", info.version);
   });
   autoUpdater.on("error", (err) => {
     logUpdate(`error: ${err?.stack || err}`);
@@ -241,14 +274,20 @@ function createWindow() {
       contextIsolation: true,
       sandbox: true,
       plugins: true, // Chromium's PDF viewer, used for printing
+      // A hidden window is throttled like a background tab; tests need it to render at full speed.
+      ...(TEST_HIDDEN ? { backgroundThrottling: false } : {}),
     },
   });
 
   const cameraOwner = win.webContents;
   const trustedCameraOrigin = isAppUrl;
+  // Folio's own page may write (never read) the clipboard, for its Copy buttons.
+  const clipboardWrite = (contents, permission, url) =>
+    contents === cameraOwner && permission === "clipboard-sanitized-write" && isAppUrl(url ?? "");
   cameraOwner.session.setPermissionCheckHandler((contents, permission, origin, details) =>
-    contents === cameraOwner && permission === "media" && trustedCameraOrigin(details.requestingUrl || origin) && details.mediaType !== "audio");
+    contents === cameraOwner && permission === "media" && trustedCameraOrigin(details.requestingUrl || origin) && details.mediaType === "video");
   cameraOwner.session.setPermissionRequestHandler((contents, permission, callback, details) => {
+    if (clipboardWrite(contents, permission, details.requestingUrl)) return callback(true);
     if (contents !== cameraOwner || permission !== "media" || !details.isMainFrame
       || !trustedCameraOrigin(details.requestingUrl) || !details.mediaTypes?.length
       || details.mediaTypes.some(type => type !== "video")) return callback(false);
@@ -258,6 +297,14 @@ function createWindow() {
   });
 
   win.once("ready-to-show", () => {
+    // A never-shown window doesn't paint, so tests couldn't screenshot it. Show it off-screen instead,
+    // without taking focus or adding a taskbar button.
+    if (TEST_HIDDEN) {
+      win.setSkipTaskbar(true);
+      win.setPosition(-32000, -32000);
+      win.showInactive();
+      return;
+    }
     if (savedWindow?.maximized) win.maximize();
     win.show();
   });
@@ -272,11 +319,22 @@ function createWindow() {
   win.on("resize", scheduleWindowSave);
   win.on("move", scheduleWindowSave);
   win.on("close", saveWindow);
+  // Native menu accelerators (especially Cmd+W on macOS) run before a DOM keydown.
+  win.webContents.on("before-input-event", (event, input) => {
+    if (input.type !== "keyDown" || input.alt) return;
+    let command;
+    if (input.control && input.key === "Tab") command = input.shift ? "previous" : "next";
+    else if (!input.shift && (IS_MAC ? input.meta : input.control)) {
+      if (input.key.toLowerCase() === "t") command = "new";
+      if (input.key.toLowerCase() === "w") command = "close";
+    }
+    if (command) { event.preventDefault(); win.webContents.send("folio:tab-command", command); }
+  });
   win.loadURL(DEV_URL ? DEV_URL + "/" : "app://folio/index.html");
 
-  // Links inside PDFs open in the default browser, never in-app.
+  // Links inside PDFs open in the default browser, never in-app (see openLink).
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (/^https?:|^mailto:/.test(url)) shell.openExternal(url);
+    void openLink(url);
     return { action: "deny" };
   });
   // Subframes (the print frame) may only show Folio pages, local blob: PDFs, and Chromium's built-in PDF viewer.
@@ -288,7 +346,7 @@ function createWindow() {
   win.webContents.on("will-navigate", (e, url) => {
     if (!isAppUrl(url)) {
       e.preventDefault();
-      if (/^https?:/.test(url)) shell.openExternal(url);
+      if (/^https?:/.test(url)) void openLink(url);
     }
   });
 
@@ -299,9 +357,9 @@ function createWindow() {
       buttons: ["Close without saving", "Cancel"],
       defaultId: 1,
       cancelId: 1,
-      title: "Unsaved annotations",
-      message: "You have highlights or notes that haven't been saved.",
-      detail: "Press Ctrl+S in Folio to save a copy with your annotations.",
+      title: "Unsaved changes",
+      message: "One or more tabs have unsaved changes.",
+      detail: `Press ${IS_MAC ? "⌘S" : "Ctrl+S"} in each marked tab to save a copy before closing Folio.`,
     });
     if (choice === 0) e.preventDefault();
   });
@@ -309,43 +367,70 @@ function createWindow() {
   win.on("closed", () => { clearTimeout(windowTimer); win = null; rendererReady = false; });
 }
 
-const MAX_URL_PDF_BYTES = 300 * 1024 * 1024;
+const MAX_URL_PDF_BYTES = MAX_DOCUMENT_BYTES;
 
-// Literal loopback/private/link-local hosts. A public link isn't allowed to redirect into the local network.
-function isLocalHost(hostname) {
-  const host = hostname.replace(/^\[|\]$/g, "").toLowerCase();
-  if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local")) return true;
-  const version = isIP(host);
-  if (version === 4) {
-    const [a, b] = host.split(".").map(Number);
-    return a === 0 || a === 10 || a === 127 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168);
+// Shown in dialogs: long enough to see where a link goes, short enough that the dialog stays readable.
+const shortUrl = (url) => (url.href.length > 300 ? url.href.slice(0, 300) + "…" : url.href);
+
+// Folio's own links (src/ai.ts) open without asking.
+const FOLIO_LINKS = new Set(["https://chatgpt.com/settings/usage", "https://claude.com/claude-code"]);
+let askingAboutLink = false;
+
+// Links open in the browser (mailto: in the mail app), never in Folio, and only once the user has seen where they go:
+// a PDF decides both a link's address and its clickable area, which can be invisible and cover the whole page.
+async function openLink(rawUrl) {
+  let url;
+  try { url = new URL(rawUrl); } catch { return; }
+  if (url.protocol !== "http:" && url.protocol !== "https:" && url.protocol !== "mailto:") return;
+  if (!FOLIO_LINKS.has(url.href)) {
+    if (askingAboutLink || !win) return; // one question at a time
+    askingAboutLink = true;
+    const mail = url.protocol === "mailto:";
+    const { response } = await dialog.showMessageBox(win, {
+      type: "question",
+      title: "Open link?",
+      message: mail ? "Open this email link in your mail app?" : `Open ${url.host} in your browser?`,
+      detail: shortUrl(url),
+      buttons: [mail ? "Open mail app" : "Open link", "Cancel"],
+      defaultId: 0,
+      cancelId: 1,
+    }).finally(() => { askingAboutLink = false; });
+    if (response !== 0) return;
   }
-  if (version === 6) {
-    const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(host);
-    if (mapped) return isLocalHost(mapped[1]);
-    return host === "::" || host === "::1" || /^f[cd]/.test(host) || /^fe[89ab]/.test(host) || host.startsWith("::ffff:");
-  }
-  return false;
+  await shell.openExternal(url.href);
 }
 
+// Asked before Folio opens an address on this computer or the local network, here rather than in the page: a document
+// that managed to run code in the page could otherwise use Folio to reach them.
+async function confirmLocalAddress(url, addresses) {
+  const { response } = await dialog.showMessageBox(win, {
+    type: "warning",
+    title: "Open a local address?",
+    message: `Open ${url.host}?`,
+    detail: `Allow ${url.origin} to connect to the following resolved addresses?\n\n${addresses.join(", ")}\n\n${shortUrl(url)}`,
+    buttons: ["Open", "Cancel"],
+    defaultId: 1,
+    cancelId: 1,
+  });
+  return response === 0;
+}
+
+// The name a download gets: from Content-Disposition when the server sends one, else the URL's last segment.
 function pdfNameFromResponse(url, disposition) {
   const match = /filename\*=(?:UTF-8'')?([^;]+)|filename="?([^";]+)"?/i.exec(disposition || "");
   let name = (match?.[1] || match?.[2] || "").trim();
   try { name = decodeURIComponent(name || url.pathname.split("/").filter(Boolean).pop() || ""); } catch {}
-  name = name.replace(/[\\/:*?"<>|\u0000-\u001f]+/g, " ").trim() || url.hostname;
-  return /\.pdf$/i.test(name) ? name : name + ".pdf";
+  return safePdfName(name, url.hostname);
 }
 
-// Downloads a PDF link in the main process, so cross-origin URLs work without CORS.
+// Desktop PDF downloads use the same pinned network policy as webpage capture.
 // Resolves to { name, data } or { error } (error text is shown to the user as-is).
-function downloadPdf(rawUrl) {
-  let url;
-  if (typeof rawUrl !== "string" || rawUrl.length > 8192) return Promise.resolve({ error: "That isn't a valid web address." });
-  try { url = new URL(rawUrl.trim()); } catch { return Promise.resolve({ error: "That isn't a valid web address." }); }
-  if (url.protocol !== "http:" && url.protocol !== "https:") return Promise.resolve({ error: "Only http:// and https:// links can be opened." });
+async function downloadPdf(url, approvedLocal) {
+  const ses = session.fromPartition(`folio-download-${crypto.randomUUID()}`); // in-memory only
+  const guard = await guardSession(ses, session.defaultSession, approvedLocal);
   return new Promise((resolve) => {
     let done = false;
-    const request = net.request({ url: url.toString(), redirect: "manual" });
+    const request = net.request({ url: url.toString(), redirect: "manual", session: ses, cache: "no-store" });
     const finish = (result) => {
       if (done) return;
       done = true;
@@ -361,11 +446,11 @@ function downloadPdf(rawUrl) {
       const next = new URL(redirectUrl, url);
       if (++hops > 10) return finish({ error: "That link redirects too many times." });
       if (next.protocol !== "http:" && next.protocol !== "https:") return finish({ error: "That link redirects somewhere Folio can't open." });
-      if (isLocalHost(next.hostname) && !isLocalHost(url.hostname)) return finish({ error: "That link redirects to a local network address, so Folio didn't follow it." });
       url = next;
       request.followRedirect();
     });
-    request.on("error", () => finish({ error: `Couldn't reach ${url.hostname}.` }));
+    request.on("error", () => finish({ error: guard.refusedLocal()
+      ? "That link leads to a local network address, so Folio didn't follow it." : `Couldn't reach ${url.hostname}.` }));
     request.on("response", (response) => {
       if (response.statusCode < 200 || response.statusCode >= 300) {
         return finish({ error: `The server responded with ${response.statusCode}${response.statusMessage ? " " + response.statusMessage : ""}.` });
@@ -397,18 +482,25 @@ function downloadPdf(rawUrl) {
       });
     });
     request.end();
-  });
+  }).finally(guard.close);
 }
 
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   // A second launch (e.g. double-clicking another PDF) hands its file to the running window.
-  app.on("second-instance", (_e, argv) => {
-    if (!win) return;
-    if (win.isMinimized()) win.restore();
-    win.focus();
-    sendFile(pdfFromArgs(argv));
+  app.on("second-instance", (_e, argv, cwd) => {
+    const files = filesFromArgs(argv, cwd);
+    if (!win || !rendererReady) {
+      pendingFiles.push(...files);
+      if (!win && app.isReady()) createWindow();
+      return;
+    }
+    if (!TEST_HIDDEN) {
+      if (win.isMinimized()) win.restore();
+      win.focus();
+    }
+    void sendFiles(files);
   });
 
   app.whenReady().then(() => {
@@ -436,22 +528,60 @@ if (!app.requestSingleInstanceLock()) {
 
     handle("folio:ready", () => {
       rendererReady = true;
-      const file = pendingFile;
-      pendingFile = null;
-      if (file) setTimeout(() => sendFile(file), 0);
-      return !!file;
+      const files = pendingFiles.splice(0);
+      if (files.length) setTimeout(() => void sendFiles(files), 0);
+      return files.length > 0;
     });
-    // PDF links open directly; webpages are converted to a PDF first.
-    handle("folio:fetch-pdf", async (_event, url) => {
-      const result = await downloadPdf(url);
-      return result.webpage ? captureWebpage(result.webpage, isLocalHost) : result;
+    // Word documents picked or dropped in Folio (PDFs are read by the page itself).
+    handle("folio:open-document", (_event, file) => {
+      if (typeof file !== "string" || !WORD_FILE.test(file) || !path.isAbsolute(file)) throw new Error("Not a Word document");
+      return openWord(file, (msg) => logConvert(`${file}: ${msg}`));
     });
-    handle("folio:version", () => app.getVersion());
+    // PDF links open directly; webpages are converted to a PDF first. An address on this computer or the local
+    // network opens only once the user agrees (cancelling resolves to { cancelled: true }).
+    let importing = false;
+    handle("folio:fetch-pdf", async (_event, rawUrl) => {
+      let url;
+      try { url = new URL(typeof rawUrl === "string" && rawUrl.length <= 8192 ? rawUrl.trim() : ""); }
+      catch { return { error: "That isn't a valid web address." }; }
+      if (url.protocol !== "http:" && url.protocol !== "https:") return { error: "Only http:// and https:// links can be opened." };
+      if (importing) return { error: "Another link is still opening." };
+      importing = true;
+      try {
+        const destination = await resolveDestination(url, session.defaultSession);
+        if (destination.local && !(await confirmLocalAddress(url, destination.addresses))) return { cancelled: true };
+        const approved = destination.local ? destination : null;
+        const result = await downloadPdf(url, approved);
+        if (!result.webpage) return result;
+        return await captureWebpage(result.webpage, approved?.origin === new URL(result.webpage).origin ? approved : null);
+      } catch {
+        return { error: `Couldn't open a verified connection to ${url.hostname}.` };
+      } finally { importing = false; }
+    });
     handle("folio:app-info", () => ({ version: app.getVersion(), mode: installKind(), location: installLocation(), platform: process.platform,
       notifyOnly: NOTIFY_ONLY }));
+    handle("folio:upstream-releases", async () => {
+      const response = await net.fetch(UPSTREAM_RELEASES_API, { headers: { accept: "application/vnd.github+json" } });
+      if (!response.ok) throw new Error(`GitHub returned ${response.status}.`);
+      const length = Number(response.headers.get("content-length") || 0);
+      if (length > 2_000_000) throw new Error("GitHub returned too much release data.");
+      const text = await response.text();
+      if (text.length > 2_000_000) throw new Error("GitHub returned too much release data.");
+      const releases = JSON.parse(text);
+      if (!Array.isArray(releases)) throw new Error("GitHub returned invalid release data.");
+      return releases.slice(0, 20).map(release => ({
+        tag_name: typeof release?.tag_name === "string" ? release.tag_name.slice(0, 80) : "",
+        name: typeof release?.name === "string" ? release.name.slice(0, 200) : null,
+        body: typeof release?.body === "string" ? release.body.slice(0, 50_000) : null,
+        html_url: typeof release?.html_url === "string" && /^https:\/\/github\.com\/Forward-Future\/folio-releases\/releases\//.test(release.html_url)
+          ? release.html_url : RELEASES_PAGE,
+        published_at: typeof release?.published_at === "string" ? release.published_at : null,
+        draft: release?.draft === true,
+        prerelease: release?.prerelease === true,
+      }));
+    });
     handle("folio:open-installation", () => shell.openPath(installLocation()));
     handle("folio:open-download", () => shell.openExternal(RELEASES_PAGE));
-    handle("folio:update-status", () => updateReady);
     handle("folio:update-state", () => updateStatus);
     handle("folio:auto-update-setting", () => automaticUpdates);
     handle("folio:set-auto-update-setting", (_event, enabled) => saveUpdatePreference(enabled));

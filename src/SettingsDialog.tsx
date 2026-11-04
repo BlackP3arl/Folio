@@ -1,5 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Modal } from "./Dialogs";
+import { CLAUDE_CODE_URL, signInChatGPT, USAGE_URL, type AiProvider } from "./ai";
+import { updateSummary } from "./updates";
 
 /** One place for every Folio preference. */
 interface Props {
@@ -8,11 +10,11 @@ interface Props {
   night: boolean;
   onNight: (on: boolean) => void;
   onCheckUpstream: () => void;
+  wheelPaging: boolean;
+  onWheelPaging: (on: boolean) => void;
+  onOpenChangelog: () => void;
   onClose: () => void;
 }
-
-const USAGE_URL = "https://chatgpt.com/settings/usage";
-const CLAUDE_CODE_URL = "https://claude.com/claude-code";
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -63,7 +65,7 @@ function Choice<T extends string>({ value, options, onChange, label }: { value: 
   );
 }
 
-export function SettingsDialog({ theme, onTheme, night, onNight, onCheckUpstream, onClose }: Props) {
+export function SettingsDialog({ theme, onTheme, night, onNight, wheelPaging, onWheelPaging, onOpenChangelog, onCheckUpstream, onClose }: Props) {
   const desktop = window.folioDesktop;
   const ai = desktop?.ai;
   const [error, setError] = useState<string | null>(null);
@@ -85,15 +87,6 @@ export function SettingsDialog({ theme, onTheme, night, onNight, onCheckUpstream
   const updatable = info?.mode === "installed" || info?.mode === "appimage";
   // Unsigned Mac builds only announce updates (with a download link); signed ones install them.
   const notifyOnly = !!info?.notifyOnly;
-  const updateMessage = status.state === "checking" ? "Checking for updates…"
-    : status.state === "downloading" ? `Downloading ${status.version} (${status.percent ?? 0}%)`
-    : status.state === "ready" ? `Version ${status.version} is ready to install.`
-    : status.state === "available" ? `Folio ${status.version} is available to download.`
-    : status.state === "latest" ? "You're up to date."
-    : status.state === "error" ? `Couldn't check for updates. ${status.message ?? "Try again."}`
-    : status.state === "unsupported" && status.message === "system" ? "Updates arrive with your system's software updates (apt)."
-    : status.state === "unsupported" ? "This copy doesn't update itself."
-    : "";
 
   // Ask AI
   const [aiStatus, setAiStatus] = useState<AiStatus | null>(null);
@@ -109,20 +102,27 @@ export function SettingsDialog({ theme, onTheme, night, onNight, onCheckUpstream
   return (
     <Modal title="Settings" onClose={onClose}>
       <div className="settings">
+        {desktop && <p className="search-hint">Manage updates, appearance, and Ask AI accounts.</p>}
         <Section title="Appearance">
           <Row label="Theme">
             <Choice label="Theme" value={theme === "dark" ? "dark" : "light"} onChange={onTheme}
               options={[{ id: "light", name: "Light" }, { id: "dark", name: "Dark" }]} />
           </Row>
-          <Row label="Night reading" hint="Dims bright pages for reading in the dark. Images keep their colors.">
-            <Switch label="Night reading" checked={night} onChange={onNight} />
+          <Row label="PDF dark mode" hint="Dims bright pages for night reading. Images keep their colors.">
+            <Switch label="PDF dark mode" checked={night} onChange={onNight} />
+          </Row>
+        </Section>
+
+        <Section title="Reading">
+          <Row label="Scroll one page at a time" hint="Turn a page with each mouse wheel click or trackpad swipe.">
+            <Switch label="Scroll one page at a time" checked={wheelPaging} onChange={onWheelPaging} />
           </Row>
         </Section>
 
         {desktop && (
           <Section title="Ask AI">
             <Row label="Default provider" hint="Which assistant Ask AI opens with.">
-              <Choice label="Default provider" value={provider as "chatgpt" | "claude"}
+              <Choice label="Default provider" value={provider as AiProvider}
                 onChange={(p) => { setProvider(p); localStorage.setItem("folio:ai-provider", p); }}
                 options={[{ id: "chatgpt", name: "ChatGPT" }, { id: "claude", name: "Claude" }]} />
             </Row>
@@ -138,10 +138,10 @@ export function SettingsDialog({ theme, onTheme, night, onNight, onCheckUpstream
                 <button className="btn primary" disabled={!aiStatus || signingIn} onClick={async () => {
                   setSigningIn(true);
                   setError(null);
-                  const result = await ai!.signInChatGPT();
+                  const result = await signInChatGPT(ai!);
                   setSigningIn(false);
-                  if (!result.ok) setError(result.error ?? "ChatGPT sign-in failed.");
-                  setAiStatus(await ai!.status());
+                  setError(result.error);
+                  setAiStatus(result.status);
                 }}>{signingIn ? "Waiting for browser…" : "Continue with ChatGPT"}</button>
               )}
             </Row>
@@ -186,7 +186,7 @@ export function SettingsDialog({ theme, onTheme, night, onNight, onCheckUpstream
                 }} />
               </Row>
             )}
-            <Row label={`Folio ${info?.version ?? ""}`.trim()} hint={updateMessage || (status.checkedAt ? `Last checked ${new Date(status.checkedAt).toLocaleString()}` : undefined)}>
+            <Row label={`Folio ${info?.version ?? ""}`.trim()} hint={updateSummary(status) || (status.checkedAt ? `Last checked ${new Date(status.checkedAt).toLocaleString()}` : undefined)}>
               {updatable ? (
                 <button className="btn ghost" disabled={status.state === "checking" || status.state === "downloading"}
                   onClick={() => status.state === "ready" ? desktop.installUpdate() : status.state === "available" ? void desktop.openDownload() : desktop.checkForUpdates()}>
@@ -205,6 +205,12 @@ export function SettingsDialog({ theme, onTheme, night, onNight, onCheckUpstream
             <button className="btn ghost" onClick={onCheckUpstream}>Check upstream</button>
           </Row>
         </Section>}
+
+        <Section title="About">
+          <Row label="What's new" hint="Changes in each version of Folio.">
+            <button className="btn ghost" onClick={onOpenChangelog}>View changelog</button>
+          </Row>
+        </Section>
 
         {error && <p className="form-error">{error}</p>}
       </div>

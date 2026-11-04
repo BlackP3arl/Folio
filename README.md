@@ -3,6 +3,12 @@
 A fast, clean PDF reader for Windows, macOS, and Linux. Read, highlight, annotate, sign, and ask AI about your
 documents. Free and open source, with no Folio account required.
 
+![Folio with the Ask AI panel open, answering a question about the document with page citations](docs/screenshots/ask-ai.png)
+
+| Highlights and notes | Search |
+| --- | --- |
+| ![Color highlights in a document, with their notes in the sidebar](docs/screenshots/highlights-and-notes.png) | ![Searching a document in the dark theme, with every match highlighted and a list of matching pages](docs/screenshots/search.png) |
+
 ## Download
 
 | Platform | Download | Updates |
@@ -32,52 +38,88 @@ Or build Folio yourself from source (below).
 
 ### Open PDFs and web links
 
-- **Local files:** open a PDF with the file picker, drag and drop it anywhere in Folio, or use **Open with → Folio**
-  from your file manager. The desktop app keeps one window, bringing an already-running copy forward when you open
-  another PDF.
-- **PDF URLs:** drop a link, paste it with `Ctrl+V` outside a text field, or choose **Open from URL**
-  (`Ctrl+Shift+O`). Folio downloads and opens the PDF, follows redirects, and uses the server's filename when available.
+- **Document tabs.** Pick or drop several PDFs together, or choose **More → New tab**. The tab strip appears beneath
+  the toolbar when two or more tabs are open. Each document keeps its page, zoom, and edits when you switch.
+- **PDF URLs:** choose **Open from URL** (`Ctrl+Shift+O`), or drop a link or paste it with `Ctrl+V` outside a text
+  field to fill it in, then press **Open**. Folio downloads and opens the PDF, follows redirects, and uses the server's
+  filename when available. Folio asks once more before opening an address on your computer or local network.
 - **Webpage to PDF:** use the same URL workflow for a webpage. Folio converts it into a PDF with selectable text,
   ready for highlights, notes, and Ask AI. The conversion preserves the site's on-screen layout, backgrounds,
   transparency, colors, and images instead of switching to its print styles.
+- **Word documents to PDF:** open a `.docx` or `.doc` file the same ways as a PDF (**Open with → Folio**, the file
+  picker, or drag and drop). Folio opens the PDF and saves a private copy beside the original when possible
+  ("Report.docx" gets "Report.pdf"). Occupied names get a number. Reopening reuses a copy only if both files still
+  match Folio's conversion record. Opening a symbolic link, or a file on a separate volume on macOS, skips the
+  automatic save. Folio converts with
+  Microsoft Word on Windows when it's installed, otherwise with LibreOffice, otherwise with its own converter for
+  `.docx` (text, headings, lists, tables, and images, in a simpler layout). `.doc` files need Word or LibreOffice,
+  except on macOS. Installing Folio adds it to **Open with** for Word documents without making it their default app.
 - **Password-protected PDFs:** enter the password to read and annotate a protected document. These documents are not
   kept in the recent library, and their annotations and AI conversations are not persisted locally between sessions.
 - **Sample document:** try the built-in tour from the home screen without finding a PDF first.
 
-URL opening and webpage conversion require the desktop app. Failed downloads leave your current document open.
+URL opening, webpage conversion, and Word conversion require the desktop app. Failed downloads leave your current document open.
 
 ### Read and navigate
 
 - **Continuous scrolling** with selectable text, previous/next controls, and a page-number field for jumping directly
-  to a page.
+  to a page. Enable **Settings → Reading → Scroll one page at a time** to turn pages with the mouse wheel.
 - **Pages and Outline tabs:** browse page thumbnails or the PDF's existing outline/bookmarks; hide the sidebar when
   you want more reading space.
+- **Personal bookmarks:** click the ribbon beside a page number in **Pages** to save or remove a bookmark without
+  leaving your current page. Turn on **Bookmarked** at the top of the sidebar to see just your saved pages,
+  then select a thumbnail to jump to it. These bookmarks are included in Markdown and JSON exports. Folio remembers them locally
+  when you reopen a PDF, except for password-protected documents.
+- **Reorder pages** from either sidebar tab. Drag thumbnails or enter a new position, then save and open the reordered PDF copy.
 - **Search as you type:** match case or whole words, see the current match and total count, browse per-page snippets
   and match counts, and move between matches with `Enter` / `Shift+Enter`.
 - **Flexible views:** fit to width, fit to page, automatic sizing, preset zoom levels, zoom buttons, `Ctrl+wheel` /
   trackpad pinch, two-page spreads, and page rotation.
 - **Focus mode:** press `F` for distraction-free, fullscreen reading; press `Esc` to return.
-- **Light and dark themes**, plus an independent **Night reading** setting that dims bright pages while keeping
+- **Light and dark themes**, plus an independent **⋯ → PDF dark mode** setting that dims bright pages while keeping
   photos and figures in their original colors, including in thumbnails. Both settings survive restarts.
+
+### Edit existing text and images
+
+Choose **Edit mode**, then click the text you want to change and type on the page. Press **Enter** or click outside the line to apply it. **Esc** cancels typing. Clear a line to delete it.
+
+Click an embedded picture and choose **Replace image…** to select a PNG or JPEG. You can leave Edit mode to read your changes or use **Save copy** to export and open the edited PDF.
+
+Open **More → Version history** to review your changes. Saving a changed copy keeps the original PDF and a numbered version on this device. Text edits show the old and new wording, and image replacements show the filename and page. Open or download an earlier version from the panel. History is available for unencrypted PDFs up to 50 MB and can be cleared per document.
+
+Text keeps its original font and position. Longer replacements can overlap neighboring content, so check the page after applying a change.
+Only characters available in that font can be used. Scanned words, outlined lettering, and objects inside grouped artwork
+cannot be edited as text. Image replacement supports embedded image objects on pages without inline image data.
+The editor works with unsigned, unencrypted PDFs.
 
 ### Highlight, draw, and take notes
 
+- **Select text in scans.** Folio starts recognizing English text in the background when you open a PDF.
+  The page you jump to gets priority. A message above the page controls shows when text is still being prepared.
+  Once it clears, drag across the words to copy, highlight, or ask about a passage. Recognition runs offline.
 - **One-click highlights:** select text, then choose yellow, green, blue, pink, or red from the selection toolbar;
   `H` applies the current highlight color.
+- Choose **Highlight** in the toolbar to mark each passage in the current color as soon as you select it.
+  Choose **Done** or press `Esc` to return to reading.
 - **Notes on passages:** type into the selection toolbar and press `Enter` to highlight with a note, or press `N`
   with text selected to focus the note box.
 - **Edit existing highlights:** click one to recolor it, edit its note, ask AI about the passage, or remove it.
-- **Freehand drawing:** choose **Draw** (`D`) and draw directly on the page in black, red, blue, green, or purple.
+- **Draw on a page:** choose **Draw** (`D`) for a freehand pen, rectangle, oval, or arrow. Pick a color, then drag
+  on the page. Shapes can be undone and are included when you save a PDF copy.
 - **Text boxes:** choose **Text** (`T`) to add text to a page, using the same ink palette.
 - **Undo and redo** annotation edits with the usual keyboard shortcuts; choose **Done**, `V`, or `Esc` to leave a
   drawing/text tool and return to selection.
 - **Notes tab:** review highlights, their notes, and text boxes; click an entry to jump to it, edit a highlight's note,
   delete an entry, or ask AI about a highlight. A separate notes box holds thoughts about the whole document.
-- **Copy all as Markdown:** copy document notes, highlighted passages, and text-box content with page references.
+- **Export reading notes:** in **Notes → Export**, copy Markdown or save a JSON file. JSON includes your notes,
+  highlights, text boxes, drawings and shapes with one-based page numbers, plus the PDF's outline bookmarks.
+  It includes stable annotation IDs, colors, and coordinates in unrotated PDF user space for use in other tools.
 - **Automatic local saving:** highlights, notes, drawings, and text boxes return when you reopen an
   ordinary, non-password-protected PDF. Use **Save a copy** to share page annotations with other readers.
 
 ### Add handwritten signatures
+
+Choose **Sign** in the toolbar to add a signature.
 
 - **Capture on paper:** sign with dark ink on white paper, then use your camera or upload a PNG, JPEG, or WebP photo.
 - **Clean up the image:** crop to the signature and adjust ink sensitivity to remove the paper background. Capture
@@ -99,6 +141,9 @@ URL opening and webpage conversion require the desktop app. Failed downloads lea
 - **Whole-document or passage questions:** open the Ask AI panel from the toolbar, select text and choose **Ask AI**,
   or ask about an existing highlight.
 - **Streaming answers** with clickable page citations that jump back to the source page.
+- **Copy response** copies a finished AI answer with its Markdown formatting and page citations.
+- **Rendered mathematics:** inline and display LaTeX equations, with wide equations scrolling within the chat panel.
+  Supports `\( ... \)`, `\[ ... \]`, `$x$`, and `$$ ... $$`; existing saved answers render too.
 - **Provider and model selection**, a stop button for an in-progress answer, and a **+** button to start a fresh
   conversation.
 - **Per-document history:** conversations are saved on this computer and restored when you reopen that document,
@@ -156,8 +201,10 @@ On macOS, use `⌘` wherever this table says `Ctrl`. Press `?` with a document o
 | Action | Shortcut |
 | --- | --- |
 | Open a PDF / open a URL | `Ctrl+O` / `Ctrl+Shift+O` |
+| New tab / close tab | `Ctrl+T` / `Ctrl+W` |
+| Next tab / previous tab (Control on all platforms) | `Control+Tab` / `Control+Shift+Tab` |
 | Find / next match / previous match | `Ctrl+F` / `Enter` / `Shift+Enter` |
-| Highlight selection / write a note | `H` / `N` |
+| Highlight selection or enter Highlight mode / write a note | `H` / `N` |
 | Remove a clicked highlight | `Delete` |
 | Select / draw / add text | `V` / `D` / `T` |
 | Undo / redo annotation edits | `Ctrl+Z` / `Ctrl+Shift+Z` or `Ctrl+Y` |
@@ -171,13 +218,16 @@ On macOS, use `⌘` wherever this table says `Ctrl`. Press `?` with a document o
 
 ### Current limits
 
-- Folio annotates PDFs; it does not edit their original text/layout, merge or reorder pages, or provide OCR.
-- Search, text selection, signature-label detection, and Ask AI depend on an existing PDF text layer. Image-only scans
-  can still be viewed, drawn on, and signed, but do not gain searchable text automatically.
+- Automatic OCR adds a selection layer in the reader. The source PDF stays intact. Document-wide search,
+  signature-label detection, and whole-document AI questions use the PDF’s embedded text.
 - Ask AI uses extracted text, not page images, and includes up to about 400,000 characters of document text. Long
   documents may be truncated; AI answers can be wrong, so check the cited pages.
-- URL imports need a network connection and support public HTTP(S) links, with a 300 MB PDF download limit. Webpage
-  conversion does not share your browser's cookies or sign-ins, so pages behind a login may not load as expected.
+- Folio opens PDFs up to 300 MiB and 10,000 pages. Webpage conversion uses a separate session, so pages behind a
+  login may not load. Desktop URL imports need a direct connection or an HTTP(S) system proxy that accepts
+  numeric-address tunnels. Local-network access requires approval for the requested origin.
+- On upgrading from 1.10.8 or earlier, Recent keeps the stored PDFs and rebuilds their previews when opened.
+  Notes and chat on files up to 2 MiB keep their existing content identity. Larger files had only a partial hash,
+  so Folio keeps those legacy records on disk without attaching them to a potentially different document.
 - Automatic local saving is not cloud sync or a replacement for exporting a PDF copy. Password-protected documents
   are not saved in Folio between sessions.
 
@@ -251,6 +301,7 @@ terminal has `ELECTRON_RUN_AS_NODE=1` set, unset it first.
   sign-in and requests, and Claude Code) so credentials never reach the page.
 - `scripts/release.mjs` and `.github/workflows/release-build.yml`: the release pipeline (see
   [CONTRIBUTING.md](CONTRIBUTING.md#releasing)). `scripts/smoke-test.mjs` is the cross-platform smoke test CI runs.
+  `scripts/screenshots.mjs` retakes the screenshots in this README (`npm run build`, then `node scripts/screenshots.mjs`).
 
 ## Contributing
 

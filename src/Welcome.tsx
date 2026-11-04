@@ -3,6 +3,7 @@ import { clearRecent, listRecent, removeRecent, type RecentFile } from "./recent
 import { Icon } from "./icons";
 import { keys } from "./platform";
 import { formatBytes } from "./Dialogs";
+import { updateSummary } from "./updates";
 
 function timeAgo(t: number) {
   const s = (Date.now() - t) / 1000;
@@ -21,10 +22,6 @@ function UpdateLine({ status }: { status: UpdateStatus }) {
     </button>
   );
   switch (status.state) {
-    case "checking":
-      return <> · Checking for updates…</>;
-    case "downloading":
-      return <> · Downloading {status.version} ({status.percent ?? 0}%)…</>;
     case "ready":
       return (
         <>
@@ -51,37 +48,39 @@ function UpdateLine({ status }: { status: UpdateStatus }) {
           </button>
         </>
       );
-    case "unsupported":
-      return status.message === "system" ? <> · Updates arrive with your system updates</> : <> · This copy doesn't update itself</>;
-    default:
+    case "idle":
       return <> · {check}</>;
+    default:
+      return <> · {updateSummary(status)}</>;
   }
 }
 
 interface Props {
+  active: boolean;
   onPick: () => void;
   onOpenUrl: () => void;
-  onOpenBytes: (name: string, data: Uint8Array) => void;
+  onOpenRecent: (file: RecentFile) => void;
   onSample: () => void;
   loading: boolean;
 }
 
-export function Welcome({ onPick, onOpenUrl, onOpenBytes, onSample, loading }: Props) {
+export function Welcome({ active, onPick, onOpenUrl, onOpenRecent, onSample, loading }: Props) {
   const [recent, setRecent] = useState<RecentFile[]>([]);
   const [version, setVersion] = useState<string | null>(null);
 
   const [update, setUpdate] = useState<UpdateStatus | null>(null);
 
   useEffect(() => {
-    window.folioDesktop?.getVersion().then(setVersion);
+    window.folioDesktop?.getAppInfo().then((info) => setVersion(info.version)).catch(() => {});
     return window.folioDesktop?.onUpdateStatus?.(setUpdate);
   }, []);
 
   useEffect(() => {
-    listRecent().then(setRecent);
-  }, []);
-
-  const reopen = async (f: RecentFile) => onOpenBytes(f.name, new Uint8Array(await f.data.arrayBuffer()));
+    if (!active) return;
+    let cancelled = false;
+    void listRecent().then(files => { if (!cancelled) setRecent(files); });
+    return () => { cancelled = true; };
+  }, [active]);
 
   const forget = async (id: string) => {
     await removeRecent(id);
@@ -102,7 +101,8 @@ export function Welcome({ onPick, onOpenUrl, onOpenBytes, onSample, loading }: P
           </div>
           <div className="dropzone-text">
             <strong>{loading ? "Opening…" : "Open a PDF"}</strong>
-            <span>Drop a PDF, a link, or a webpage anywhere, or click to browse</span>
+            <span>{window.folioDesktop ? "Drop a PDF, a Word document, a link, or a webpage anywhere, or click to browse"
+              : "Drop a PDF, a link, or a webpage anywhere, or click to browse"}</span>
           </div>
           <kbd>{keys("Ctrl O")}</kbd>
         </button>
@@ -133,7 +133,7 @@ export function Welcome({ onPick, onOpenUrl, onOpenBytes, onSample, loading }: P
             </div>
             <div className="recent-grid">
               {recent.map((f) => (
-                <div key={f.id} className="recent-card" onClick={() => reopen(f)} role="button" tabIndex={0} onKeyDown={(e) => e.key === "Enter" && reopen(f)}>
+                <div key={f.id} className="recent-card" onClick={() => onOpenRecent(f)} role="button" tabIndex={0} onKeyDown={(e) => e.key === "Enter" && onOpenRecent(f)}>
                   <div className="recent-thumb">
                     {f.thumb ? <img src={f.thumb} alt="" /> : <Icon name="file" size={28} />}
                     {f.lastPage > 1 && (

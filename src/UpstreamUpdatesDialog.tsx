@@ -42,17 +42,22 @@ function releaseNotes(body: string | null) {
 }
 
 export async function fetchUpstreamReleases(currentVersion: string, signal?: AbortSignal) {
-  const response = await fetch(RELEASES_API, {
-    signal,
-    headers: { Accept: "application/vnd.github+json" },
-  });
-  if (!response.ok) {
-    const remaining = response.headers.get("x-ratelimit-remaining");
-    throw new Error(response.status === 403 && remaining === "0"
-      ? "GitHub's request limit was reached. Try again later."
-      : `GitHub returned ${response.status}. Try again later.`);
+  let releases: GitHubRelease[];
+  if (window.folioDesktop) {
+    releases = await window.folioDesktop.getUpstreamReleases();
+  } else {
+    const response = await fetch(RELEASES_API, {
+      signal,
+      headers: { Accept: "application/vnd.github+json" },
+    });
+    if (!response.ok) {
+      const remaining = response.headers.get("x-ratelimit-remaining");
+      throw new Error(response.status === 403 && remaining === "0"
+        ? "GitHub's request limit was reached. Try again later."
+        : `GitHub returned ${response.status}. Try again later.`);
+    }
+    releases = await response.json() as GitHubRelease[];
   }
-  const releases = await response.json() as GitHubRelease[];
   return releases.filter(release => !release.draft && !release.prerelease && compareVersions(release.tag_name, currentVersion) > 0)
     .map((release): UpstreamRelease => ({
       version: release.tag_name.replace(/^v/i, ""),
@@ -79,7 +84,7 @@ export function UpstreamUpdatesDialog({ onClose }: { onClose: () => void }) {
 
   useEffect(() => {
     let cancelled = false;
-    void window.folioDesktop?.getVersion().then(version => { if (!cancelled) setCurrentVersion(version); }).catch(() => {});
+    void window.folioDesktop?.getAppInfo().then(info => { if (!cancelled) setCurrentVersion(info.version); }).catch(() => {});
     return () => { cancelled = true; };
   }, []);
 

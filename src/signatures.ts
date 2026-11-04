@@ -69,7 +69,7 @@ async function addSignature(viewer: PDFViewer, pdf: PDFDocumentProxy, placement:
   for (let attempt = 0; attempt < 120; attempt++) {
     if (viewer.pdfDocument !== pdf) throw new Error("The document changed.");
     layer = viewer.getPageView(placement.pageNumber - 1)?.annotationEditorLayer?.annotationEditorLayer;
-    if (layer) break;
+    if (layer && viewer.currentPageNumber === placement.pageNumber) break;
     await new Promise(resolve => setTimeout(resolve, 25));
   }
   if (!layer) throw new Error(`Page ${placement.pageNumber} isn't ready for signatures. Please try again.`);
@@ -113,6 +113,10 @@ export async function placeSignatures(viewer: PDFViewer, pdf: PDFDocumentProxy, 
     if (viewer.pdfDocument === pdf) {
       viewer.annotationEditorMode = { mode: AnnotationEditorType.NONE };
       viewer.currentPageNumber = originalPage;
+      // Page switches schedule scrolling in pdf.js. Let the final placement settle, then reaffirm the
+      // original page so a pending scroll cannot leave the navigation controls on the last signed page.
+      await new Promise(resolve => setTimeout(resolve, 50));
+      if (viewer.pdfDocument === pdf && viewer.currentPageNumber !== originalPage) viewer.currentPageNumber = originalPage;
     }
   }
 }
