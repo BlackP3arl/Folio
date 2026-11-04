@@ -862,3 +862,29 @@
 .switch:disabled {
   opacity: 0.5;
 }
+
+/* ── Original developer updates ─────────────────────────────────────── */
+.modal:has(.upstream-updates) { width: min(680px, calc(100vw - 32px)); max-height: calc(100dvh - 48px); }
+.upstream-updates { display: grid; gap: 16px; padding: 0 18px 18px; overflow-y: auto; }
+.upstream-summary, .upstream-found, .upstream-current, .upstream-question, .upstream-request { display: flex; gap: 12px; }
+.upstream-summary { align-items: center; justify-content: space-between; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+.upstream-summary > div, .upstream-found, .upstream-current, .upstream-question, .upstream-request { flex-direction: column; }
+.upstream-summary strong, .upstream-found strong, .upstream-current strong, .upstream-question strong { font-size: 13px; }
+.upstream-summary span, .upstream-found span, .upstream-current span, .upstream-question span { color: var(--text-3); font-size: 12px; line-height: 1.5; }
+.upstream-status { color: var(--text-2); font-size: 13px; }
+.upstream-current, .upstream-found { padding: 13px; border-radius: 10px; background: var(--surface-2); }
+.upstream-list { display: grid; gap: 8px; }
+.upstream-list details { border: 1px solid var(--line); border-radius: 10px; background: var(--surface); overflow: hidden; }
+.upstream-list summary { display: flex; align-items: center; gap: 12px; padding: 12px; cursor: pointer; list-style-position: inside; }
+.upstream-list summary > span { display: inline-flex; flex: 1; align-items: baseline; gap: 8px; }
+.upstream-list summary strong { font-size: 13px; }
+.upstream-list summary small { color: var(--text-3); font-size: 11px; }
+.upstream-list summary a, .upstream-history { color: var(--accent-text); font-size: 12px; }
+.upstream-list details > p { margin: 0; padding: 0 14px 14px; color: var(--text-2); font-size: 12.5px; line-height: 1.6; white-space: pre-wrap; }
+.upstream-question { padding: 14px; border: 1px solid var(--accent); border-radius: 10px; background: var(--accent-soft); }
+.upstream-question > div { display: flex; justify-content: flex-end; gap: 8px; margin-top: 3px; }
+.upstream-request label { font-size: 12px; font-weight: 600; }
+.upstream-request label span { margin-left: 6px; color: var(--accent-text); }
+.upstream-request textarea { box-sizing: border-box; width: 100%; min-height: 150px; resize: vertical; padding: 10px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface-2); color: var(--text); font: 11px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; }
+.upstream-request p { margin: 0; color: var(--text-3); font-size: 11px; }
+.upstream-history { justify-self: start; }

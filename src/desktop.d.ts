@@ -1,3 +1,5 @@
+declare const __APP_VERSION__: string;
+
 interface UpdateStatus {
   state: "idle" | "unsupported" | "checking" | "latest" | "available" | "downloading" | "ready" | "error";
   version?: string;

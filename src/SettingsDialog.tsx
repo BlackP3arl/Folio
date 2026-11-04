@@ -7,6 +7,7 @@ interface Props {
   onTheme: (theme: "light" | "dark") => void;
   night: boolean;
   onNight: (on: boolean) => void;
+  onCheckUpstream: () => void;
   onClose: () => void;
 }
 
@@ -62,7 +63,7 @@ function Choice<T extends string>({ value, options, onChange, label }: { value: 
   );
 }
 
-export function SettingsDialog({ theme, onTheme, night, onNight, onClose }: Props) {
+export function SettingsDialog({ theme, onTheme, night, onNight, onCheckUpstream, onClose }: Props) {
   const desktop = window.folioDesktop;
   const ai = desktop?.ai;
   const [error, setError] = useState<string | null>(null);
@@ -193,8 +194,17 @@ export function SettingsDialog({ theme, onTheme, night, onNight, onClose }: Prop
                 </button>
               ) : null}
             </Row>
+            <Row label="Original developer updates" hint="Review newer Forward-Future releases and choose whether to bring their changes into this customized app.">
+              <button className="btn ghost" onClick={onCheckUpstream}>Check upstream</button>
+            </Row>
           </Section>
         )}
+
+        {!desktop && <Section title="Updates">
+          <Row label={`Folio ${__APP_VERSION__}`} hint="Review newer Forward-Future releases and choose whether to bring their changes into this customized app.">
+            <button className="btn ghost" onClick={onCheckUpstream}>Check upstream</button>
+          </Row>
+        </Section>}
 
         {error && <p className="form-error">{error}</p>}
       </div>
