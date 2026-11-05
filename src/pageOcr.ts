@@ -61,7 +61,16 @@ async function readWords(page: PDFPageProxy, worker: OcrWorker, signal: AbortSig
   try {
     await render.promise;
     signal.throwIfAborted();
-    const { data } = await worker.recognize(canvas, {}, { blocks: true, text: false });
+    // A language switch or document close can terminate the worker during image encoding.
+    // Encode here so we can check ownership before Tesseract posts its recognition job.
+    const png = await new Promise<Blob>((resolve, reject) => canvas.toBlob(blob => {
+      if (blob) resolve(blob);
+      else reject(new Error("Couldn't prepare the scan image."));
+    }));
+    signal.throwIfAborted();
+    const bytes = new Uint8Array(await png.arrayBuffer());
+    signal.throwIfAborted();
+    const { data } = await worker.recognize(bytes, {}, { blocks: true, text: false });
     signal.throwIfAborted();
     const ctx = canvas.getContext("2d")!;
     ctx.font = "100px sans-serif";

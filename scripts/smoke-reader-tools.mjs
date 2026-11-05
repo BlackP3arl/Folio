@@ -196,14 +196,26 @@ async function checkScanSelection(app, page) {
   await page.keyboard.press(settingsShortcut);
   await picker.click();
   await languages.getByRole("checkbox", { name: "German", exact: true }).uncheck();
+  // Change languages again while the preceding run's scan image is still being encoded.
+  await page.evaluate(() => {
+    const toBlob = HTMLCanvasElement.prototype.toBlob;
+    HTMLCanvasElement.prototype.toBlob = function (callback, ...options) {
+      if (this.isConnected) return toBlob.call(this, callback, ...options);
+      HTMLCanvasElement.prototype.toBlob = toBlob;
+      return toBlob.call(this, blob => { window.finishScanEncoding = () => callback(blob); }, ...options);
+    };
+  });
   await apply.click();
   await languages.waitFor({ state: "hidden" });
+  await page.waitForFunction(() => typeof window.finishScanEncoding === "function");
   await picker.click();
   await search.fill("German");
   await languages.getByRole("checkbox", { name: "German", exact: true }).check();
   await apply.click();
   await languages.waitFor({ state: "hidden" });
+  await page.evaluate(() => window.finishScanEncoding());
   await page.keyboard.press("Escape");
+  await currentScan.getByText("Grüße", { exact: true }).waitFor({ timeout: 45_000 });
   assert.deepEqual(await app.evaluate(() => globalThis.finishModelDownloads()), ["spa.traineddata.gz", "spa.traineddata.gz", "deu.traineddata.gz"]);
   await goTo(1);
   assert.equal((await mixed.innerText()).trim(), "Embedded text");

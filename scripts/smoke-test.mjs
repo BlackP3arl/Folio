@@ -48,7 +48,10 @@ const failures = [];
 try {
   const page = readerPage(await app.firstWindow());
   assert.ok(await app.evaluate(({ app }) => app.commandLine.hasSwitch("mute-audio")));
-  page.on("pageerror", (e) => failures.push(String(e)));
+  page.on("pageerror", (error) => {
+    console.error(error.stack ?? String(error));
+    failures.push(String(error));
+  });
   await page.getByRole("button", { name: /Try a sample/ }).waitFor({ timeout: 30_000 });
 
   const platformClass = await page.evaluate(() => [...document.documentElement.classList].find((c) => c.startsWith("platform-")));
