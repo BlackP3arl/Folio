@@ -29,7 +29,7 @@ import { imageRegions, trackPageImages } from "./nightImages";
 import { recognizeScannedPages } from "./pageOcr";
 import { ImageMenu, ImageViewer, type ImageTarget } from "./ImageViewer";
 import { MoreMenu, type MoreItem } from "./MoreMenu";
-import { keys } from "./platform";
+import { IS_MAC, keys } from "./platform";
 import { AiPanel, type AiContext } from "./AiPanel";
 import { ZoomMenu } from "./ZoomMenu";
 import { SearchBar, type FindResult } from "./SearchBar";
@@ -46,6 +46,7 @@ import { detectSignatureTargets, placeSignature, type SignatureTarget } from "./
 import { keepDrawingPointer } from "./drawing";
 import { drawShapes, type Shape } from "./shapes";
 import { enableWheelPaging } from "./wheelPaging";
+import { LinkHistory, type HistoryState } from "./linkHistory";
 
 type Tool = "select" | "highlight" | "ink" | "freetext";
 
@@ -137,6 +138,17 @@ export default function App({ tabs, tabKey, upgradeNotes }: { tabs: DocumentTabs
   const viewerRef = useRef<PDFViewer | null>(null);
   const busRef = useRef<EventBus | null>(null);
   const linkRef = useRef<PDFLinkService | null>(null);
+  const navigationRef = useRef<LinkHistory | null>(null);
+  const [navigation, setNavigation] = useState<HistoryState>({ back: false, forward: false });
+  const [backHint, setBackHint] = useState<string | null>(null);
+  const backHintButton = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!backHint) return;
+    const timer = window.setTimeout(() => {
+      if (document.activeElement !== backHintButton.current) setBackHint(null);
+    }, 5500);
+    return () => window.clearTimeout(timer);
+  }, [backHint]);
   const findRef = useRef<PDFFindController | null>(null);
   const restoreRef = useRef<ReadingView | null>(null);
   const restoringRef = useRef(false);
@@ -272,6 +284,14 @@ export default function App({ tabs, tabKey, upgradeNotes }: { tabs: DocumentTabs
     trackPageImages(eventBus);
     const stopDrawingPointer = keepDrawingPointer(container);
     linkService.setViewer(viewer);
+    const history = new LinkHistory(viewer, (state, followed) => {
+      setNavigation(state);
+      if (followed && tabs.active === tabKey && tabs.takeLinkHint()) {
+        setBackHint(followed.from === followed.to ? "Back to previous spot" : `Back to page ${followed.from}`);
+      } else setBackHint(null);
+    });
+    linkService.setHistory(history);
+    navigationRef.current = history;
     viewerRef.current = viewer;
     markupRef.current = new MarkupController(eventBus, viewer, setMarkup);
     busRef.current = eventBus;
@@ -338,7 +358,7 @@ export default function App({ tabs, tabKey, upgradeNotes }: { tabs: DocumentTabs
     };
     container.addEventListener("wheel", onWheel, { passive: false });
     return () => { stopDrawingPointer(); container.removeEventListener("wheel", onWheel); };
-  }, []);
+  }, [tabs, tabKey]);
 
   useEffect(() => {
     const viewer = viewerRef.current!;
@@ -406,6 +426,7 @@ export default function App({ tabs, tabKey, upgradeNotes }: { tabs: DocumentTabs
         viewer.setDocument(pdf);
         unattached = undefined;
         linkRef.current!.setDocument(pdf, null);
+        navigationRef.current!.reset();
         prev?.pdf.loadingTask.destroy();
 
         // Markup is saved automatically; only documents Folio can't store count as having unsaved changes.
@@ -1014,11 +1035,26 @@ export default function App({ tabs, tabKey, upgradeNotes }: { tabs: DocumentTabs
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (tabs.active !== tabKey) return;
+      const mod = e.ctrlKey || e.metaKey;
+      const target = e.target;
+      const typing = target instanceof Element && (target.closest("input, textarea, select, .freeTextEditor") ||
+        (target instanceof HTMLElement && target.isContentEditable));
+      if (e.altKey && !mod && !e.shiftKey && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+        if (e.defaultPrevented) return;
+        if (typing || signing || pending || imageView || printCopy || document.querySelector('[aria-modal="true"]')) {
+          // Chromium can leave the web reader here; macOS uses Option+arrow for native text editing.
+          if (!IS_MAC && !window.folioDesktop) e.preventDefault();
+        } else if (docRef.current) {
+          e.preventDefault();
+          if (e.key === "ArrowLeft") navigationRef.current?.back();
+          else navigationRef.current?.forward();
+        }
+        return;
+      }
       if (printCopy) {
         if ((e.ctrlKey || e.metaKey) && ["p", "o", "w", "t", "s", ",", "tab"].includes(e.key.toLowerCase())) e.preventDefault();
         return;
       }
-      const mod = e.ctrlKey || e.metaKey;
       if (mod && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "t") {
         e.preventDefault(); tabs.library(); return;
       }
@@ -1029,8 +1065,6 @@ export default function App({ tabs, tabKey, upgradeNotes }: { tabs: DocumentTabs
         e.preventDefault(); tabs.cycle(e.shiftKey ? -1 : 1); return;
       }
       if (signing) return;
-      const target = e.target as HTMLElement;
-      const typing = target.closest("input, textarea, select, [contenteditable=true], .freeTextEditor");
 
       if (mod && e.key === ",") {
         e.preventDefault();
@@ -1259,6 +1293,9 @@ export default function App({ tabs, tabKey, upgradeNotes }: { tabs: DocumentTabs
             items={[
               ...(doc
                 ? ([
+                    ...(navigation.back ? [{ kind: "action", icon: "chevronLeft", label: "Back", shortcut: keys("Alt+←"), onSelect: () => navigationRef.current?.back() }] : []),
+                    ...(navigation.forward ? [{ kind: "action", icon: "chevronRight", label: "Forward", shortcut: keys("Alt+→"), onSelect: () => navigationRef.current?.forward() }] : []),
+                    ...(navigation.back || navigation.forward ? [{ kind: "divider" }] : []),
                     { kind: "action", icon: "plus", label: "New tab", shortcut: keys("Ctrl T"), onSelect: () => tabs.library() },
                     { kind: "action", icon: "close", label: "Close document", shortcut: keys("Ctrl W"), onSelect: () => void tabs.close(tabKey) },
                     { kind: "divider" },
@@ -1564,6 +1601,9 @@ export default function App({ tabs, tabKey, upgradeNotes }: { tabs: DocumentTabs
         </div>
       )}
 
+      {active && doc && backHint && !toast && !error && !dialog && !pending && !signing && !imageView && !printCopy &&
+        <div role="status"><button type="button" ref={backHintButton} className="toast link-return" onBlur={() => setBackHint(null)}
+          onClick={() => navigationRef.current?.back()}><Icon name="chevronLeft" size={15} />{backHint}</button></div>}
       {(toast || error) && (
         <div className={`toast ${error ? "error" : ""}`} onClick={() => setError(null)}>
           {error ?? toast}
