@@ -41,6 +41,8 @@ interface EditorLayer {
 }
 interface UIManager {
   getMode(): number;
+  readonly hasSelection: boolean;
+  endCurrentEditing(): void;
   unselectAll(): void;
   getEditors(pageIndex: number): Iterable<Editor>;
   getEditor(id: string): Editor | undefined;
@@ -77,6 +79,7 @@ export class MarkupController {
   #known = new Map<string, Mark>();
   #restoring = new Set<number>();
   #selectionText = "";
+  #penWidth = 1;
   #syncTimer = 0;
   #saveTimer = 0;
   #listener: (state: MarkupState) => void;
@@ -112,6 +115,9 @@ export class MarkupController {
     for (const name of ["editingstateschanged", "annotationeditormodechanged", "editingaction"]) {
       bus.on(name, () => this.scheduleSync());
     }
+    bus.on("annotationeditormodechanged", ({ mode }: { mode: number }) => {
+      if (mode === AnnotationEditorType.INK) this.#applyPenWidth();
+    });
   }
 
   get state(): MarkupState {
@@ -120,6 +126,22 @@ export class MarkupController {
 
   clearEditorSelection() {
     this.#ui?.unselectAll();
+  }
+
+  get penWidth() { return this.#penWidth; }
+
+  setPenWidth(width: number) {
+    // PDF.js groups consecutive strokes. Finish that group before changing the next stroke's width.
+    this.#ui?.endCurrentEditing();
+    this.clearEditorSelection();
+    this.#penWidth = width;
+    this.#applyPenWidth();
+  }
+
+  #applyPenWidth() {
+    if (this.#ui && !this.#ui.hasSelection) {
+      this.#bus.dispatch("switchannotationeditorparams", { source: this, type: AnnotationEditorParamsType.INK_THICKNESS, value: this.#penWidth });
+    }
   }
 
   /** Loads saved markup for a newly opened document. Password-protected documents aren't persisted. */

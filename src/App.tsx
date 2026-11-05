@@ -1416,6 +1416,14 @@ export default function App({ tabs, tabKey, upgradeNotes }: { tabs: DocumentTabs
                   {["Pen", "Rectangle", "Oval", "Arrow"].map(name => <option key={name}>{name}</option>)}
                 </select>
               )}
+              {tool === "ink" && drawTool === "Pen" && (
+                <select className="draw-tool" aria-label="Pen width" title="Pen width" defaultValue={markupRef.current?.penWidth ?? 1}
+                  onChange={e => markupRef.current?.setPenWidth(Number(e.target.value))}>
+                  <option value={1}>Thin</option>
+                  <option value={3}>Medium</option>
+                  <option value={6}>Thick</option>
+                </select>
+              )}
               <div className="color-options" role="radiogroup" aria-label="Color">
                 {PALETTE[tool]!.map((c) => (
                   <button

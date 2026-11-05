@@ -110,8 +110,9 @@ The editor works with unsigned, unencrypted PDFs.
 - **Notes on passages:** type into the selection toolbar and press `Enter` to highlight with a note, or press `N`
   with text selected to focus the note box.
 - **Edit existing highlights:** click one to recolor it, edit its note, ask AI about the passage, or remove it.
-- **Draw on a page:** choose **Draw** (`D`) for a freehand pen, rectangle, oval, or arrow. Pick a color, then drag
-  on the page. Shapes can be undone and are included when you save a PDF copy.
+- **Draw on a page:** choose **Draw** (`D`) for a freehand pen, rectangle, oval, or arrow. With **Pen** selected,
+  choose **Thin**, **Medium**, or **Thick** for your next strokes. Pick a color, then drag on the page.
+  Drawings can be undone and are included when you save a PDF copy.
 - **Text boxes:** choose **Text** (`T`) to add text to a page, using the same ink palette.
 - **Undo and redo** annotation edits with the usual keyboard shortcuts; choose **Done**, `V`, or `Esc` to leave a
   drawing/text tool and return to selection.

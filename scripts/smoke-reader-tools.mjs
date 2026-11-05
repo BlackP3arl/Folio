@@ -219,6 +219,58 @@ async function captureDownload(app, file) {
   }, file);
 }
 
+async function checkPenDrawing(app, page, folder) {
+  const blank = testPdf(["<< /Type /Catalog /Pages 2 0 R >>", "<< /Type /Pages /Count 1 /Kids [3 0 R] >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 480 320] /Resources << >> >>"]);
+  await app.evaluate(({ BrowserWindow }, pdf) => BrowserWindow.getAllWindows()[0].webContents.send(
+    "folio:open-file", { name: "Pen widths.pdf", data: Buffer.from(pdf) }), blank);
+  await page.window.waitForFunction(() => document.title.startsWith("Pen widths.pdf"));
+  await page.getByTitle("Draw (D)").click();
+  const width = page.getByRole("combobox", { name: "Pen width" });
+  const layer = page.locator(".page .annotationEditorLayer.inkEditing");
+  await layer.waitFor();
+  assert.equal(await width.inputValue(), "1");
+  const box = await layer.boundingBox();
+  const x = box.x + box.width * 0.2;
+  for (const [index, name] of ["Thin", "Medium", "Thick"].entries()) {
+    await width.selectOption({ label: name });
+    const y = box.y + box.height * (0.3 + index * 0.15);
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x + 25, y - 10);
+    await page.mouse.move(x + 50, y + 10);
+    await page.mouse.move(x + 100, y);
+    await page.mouse.up();
+    // An older ink fitter showed the tip while drawing, then pulled it halfway back on release.
+    const end = await page.locator(".page svg.draw").last().evaluate(svg => {
+      const path = svg.querySelector("path");
+      const p = path.getPointAtLength(path.getTotalLength()).matrixTransform(svg.getScreenCTM());
+      return { x: p.x, y: p.y };
+    });
+    assert.ok(Math.hypot(end.x - x - 100, end.y - y) < 4, `${name} pen ended away from the release point`);
+  }
+  const tool = page.getByRole("combobox", { name: "Drawing tool" });
+  await tool.selectOption("Rectangle");
+  assert.equal(await width.count(), 0);
+  await tool.selectOption("Pen");
+  assert.equal(await width.inputValue(), "6");
+  await page.getByRole("button", { name: "Done", exact: true }).click();
+  const file = path.join(folder, "pen-widths.pdf");
+  await captureDownload(app, file);
+  await page.keyboard.press("ControlOrMeta+s");
+  assert.equal(await app.evaluate(() => globalThis.folioReordered), "completed");
+  const savedWidths = await page.evaluate(async bytes => {
+    const task = pdfjsLib.getDocument({ data: Uint8Array.from(bytes) });
+    try {
+      const pdf = await task.promise;
+      const annotations = await (await pdf.getPage(1)).getAnnotations();
+      return annotations.filter(a => a.subtype === "Ink").map(a => a.borderStyle.rawWidth).sort((a, b) => a - b);
+    } finally { await task.destroy(); }
+  }, Array.from(readFileSync(file)));
+  assert.deepEqual(savedWidths, [1, 3, 6]);
+  console.log("ok  freehand strokes keep their release points and three independent pen widths in the saved PDF");
+}
+
 async function checkContentEditing(app, page, folder, shots) {
   // Two identical text runs and two placements of one image, also reused on the second page.
   const words = "BT /F 16 Tf 12 170 Td (Orig) Tj 29.34 0 Td (inal) Tj -29.34 -25 Td (Original) Tj ET";
@@ -622,4 +674,5 @@ export async function checkReaderTools(app, page, folder, shots) {
   await checkScanSelection(app, page);
   await checkContentEditing(app, page, folder, shots);
   await checkLinkHistory(app, page, shots);
+  await checkPenDrawing(app, page, folder);
 }
