@@ -39,6 +39,7 @@ interface FolioDesktop {
 }
 
 interface AiStatus {
+  openrouter: { configured: boolean };
   chatgpt: { connected: boolean; email: string; name: string; welcomeSeen: boolean; encrypted: boolean };
   claude: { installed: boolean; loggedIn: boolean; version?: string; subscription?: boolean; authMethod?: string };
 }
@@ -65,11 +66,15 @@ interface FolioAi {
   chatgptWelcomeSeen(): Promise<boolean>;
   chatgptModels(): Promise<{ ok: boolean; models?: { id: string; name: string }[]; error?: string; code?: string }>;
   recheckClaude(): Promise<AiStatus["claude"]>;
-  ask(request: { id: string; provider: "chatgpt" | "claude"; model: string; document: { name: string; text: string; truncated: boolean };
+  openRouterKey(action: "save" | "check" | "remove", key?: string): Promise<{ ok: boolean; configured?: boolean; error?: string }>;
+  openRouterModels(): Promise<{ ok: boolean; models?: OpenRouterModel[]; error?: string }>;
+  ask(request: { id: string; provider: "chatgpt" | "claude" | "openrouter"; model: string; document: { name: string; text: string; truncated: boolean };
     messages: AiMessage[] }): Promise<boolean>;
   cancel(id: string): Promise<boolean>;
   onEvent(callback: (event: AiEvent) => void): () => void;
 }
+
+interface OpenRouterModel { id: string; name: string; contextLength: number | null }
 
 interface Window {
   folioDesktop?: FolioDesktop;

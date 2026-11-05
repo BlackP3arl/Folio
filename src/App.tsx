@@ -222,7 +222,7 @@ export default function App({ tabs, tabKey, upgradeNotes }: { tabs: DocumentTabs
   const [printCopy, setPrintCopy] = useState<{ pdf: PDFDocumentProxy; bytes: Uint8Array; page: number; name: string } | null>(null);
   const preparingPrint = useRef(false);
   useEffect(() => () => { if (printCopy) void printCopy.pdf.loadingTask.destroy(); }, [printCopy]);
-  const [dialog, setDialog] = useState<"info" | "shortcuts" | "about" | "url" | "settings" | "changelog" | "upgrade" | null>(
+  const [dialog, setDialog] = useState<"info" | "shortcuts" | "about" | "url" | "settings" | "ai-settings" | "changelog" | "upgrade" | null>(
     upgradeNotes.length ? "upgrade" : null);
   // A pasted or dropped link waits in Open from URL, so the user sees where it goes before Folio contacts it.
   const [linkDraft, setLinkDraft] = useState("");
@@ -1563,6 +1563,7 @@ export default function App({ tabs, tabKey, upgradeNotes }: { tabs: DocumentTabs
             context={aiContext}
             onClearContext={() => setAiContext(null)}
             onGoToPage={goTo}
+            onSettings={() => setDialog("ai-settings")}
             onClose={() => setAiOpen(false)}
           />
         )}
@@ -1595,7 +1596,8 @@ export default function App({ tabs, tabKey, upgradeNotes }: { tabs: DocumentTabs
         onPrint={() => { printPdfBytes(printCopy.bytes); setPrintCopy(null); }} onClose={() => setPrintCopy(null)} />}
       {dialog === "shortcuts" && <ShortcutsDialog onClose={() => setDialog(null)} />}
       {dialog === "about" && <AboutDialog onClose={() => setDialog(null)} />}
-      {dialog === "settings" && <SettingsDialog theme={theme} onTheme={setThemeTo} night={night} onNight={setNightTo}
+      {(dialog === "settings" || dialog === "ai-settings") && <SettingsDialog initialSection={dialog === "ai-settings" ? "Ask AI" : "General"}
+        theme={theme} onTheme={setThemeTo} night={night} onNight={setNightTo}
         scanLanguages={scanLanguages} onScanLanguages={next => {
           setScanLanguages(next);
           try { localStorage.setItem("folio:scan-language", next.join("+")); }

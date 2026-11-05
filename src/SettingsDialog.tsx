@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Modal } from "./Dialogs";
-import { CLAUDE_CODE_URL, signInChatGPT, USAGE_URL, type AiProvider } from "./ai";
+import { CLAUDE_CODE_URL, PROVIDERS, savedProvider, saveAiPreference, signInChatGPT, USAGE_URL, type AiProvider } from "./ai";
+import { OpenRouterSettings } from "./OpenRouterSettings";
 import { updateSummary } from "./updates";
 import { ScanLanguagePicker } from "./ScanLanguagePicker";
 import type { ScanLanguage } from "./scanLanguage";
@@ -9,6 +10,7 @@ import { clearStoredData, countStoredData, onStoredDataCleared, type StoredCateg
 
 /** One place for every Folio preference. */
 interface Props {
+  initialSection?: "General" | "Ask AI";
   theme: string;
   onTheme: (theme: "light" | "dark") => void;
   night: boolean;
@@ -145,10 +147,11 @@ function StoredData() {
   </details>;
 }
 
-export function SettingsDialog({ theme, onTheme, night, onNight, wheelPaging, onWheelPaging, scanLanguages, onScanLanguages, onOpenChangelog, onClose }: Props) {
+export function SettingsDialog({ initialSection = "General", theme, onTheme, night, onNight, wheelPaging, onWheelPaging, scanLanguages, onScanLanguages, onOpenChangelog, onClose }: Props) {
   const desktop = window.folioDesktop;
   const ai = desktop?.ai;
   const [error, setError] = useState<string | null>(null);
+  const [section, setSection] = useState<"General" | "Ask AI" | "Storage">(initialSection);
 
   // Updates
   const [info, setInfo] = useState<Awaited<ReturnType<FolioDesktop["getAppInfo"]>> | null>(null);
@@ -170,9 +173,15 @@ export function SettingsDialog({ theme, onTheme, night, onNight, wheelPaging, on
 
   // Ask AI
   const [aiStatus, setAiStatus] = useState<AiStatus | null>(null);
-  const [provider, setProvider] = useState(() => localStorage.getItem("folio:ai-provider") || "chatgpt");
+  const [provider, setProvider] = useState(savedProvider);
   const [signingIn, setSigningIn] = useState(false);
-  useEffect(() => { void ai?.status().then(setAiStatus).catch(() => {}); }, [ai]);
+  useEffect(() => {
+    if (section !== "Ask AI") return;
+    let current = true;
+    void ai?.status().then(value => { if (current) setAiStatus(value); })
+      .catch(() => { if (current) setError("Couldn't check the provider connections."); });
+    return () => { current = false; };
+  }, [ai, section]);
 
   // Signature
   const [savedSignature, setSavedSignature] = useState(() => {
@@ -182,8 +191,12 @@ export function SettingsDialog({ theme, onTheme, night, onNight, wheelPaging, on
   return (
     <Modal title="Settings" onClose={onClose}>
       <div className="settings">
-        {desktop && <p className="search-hint">Manage updates, appearance, and Ask AI accounts.</p>}
-        <Section title="Appearance">
+        <nav className="settings-nav" aria-label="Settings sections">
+          {(["General", "Ask AI", "Storage"] as const).filter(name => name !== "Ask AI" || ai).map(name =>
+            <button key={name} type="button" aria-current={section === name ? "page" : undefined}
+              onClick={() => { setSection(name); setError(null); }}>{name}</button>)}
+        </nav>
+        {section === "General" && <><Section title="Appearance">
           <Row label="Theme">
             <Choice label="Theme" value={theme === "dark" ? "dark" : "light"} onChange={onTheme}
               options={[{ id: "light", name: "Light" }, { id: "dark", name: "Dark" }]} />
@@ -202,16 +215,17 @@ export function SettingsDialog({ theme, onTheme, night, onNight, wheelPaging, on
           </Row>
         </Section>
 
-        <StoredData />
+        </>}
 
-        {desktop && (
-          <Section title="Ask AI">
-            <Row label="Default provider" hint="Which assistant Ask AI opens with.">
-              <Choice label="Default provider" value={provider as AiProvider}
-                onChange={(p) => { setProvider(p); localStorage.setItem("folio:ai-provider", p); }}
-                options={[{ id: "chatgpt", name: "ChatGPT" }, { id: "claude", name: "Claude" }]} />
+        {ai && section === "Ask AI" && (
+          <section className="settings-section">
+            <Row label="Provider">
+              <select aria-label="Ask AI provider" className="ai-provider" value={provider} onChange={event => {
+                const next = event.target.value as AiProvider;
+                setProvider(next); setError(null); saveAiPreference("folio:ai-provider", next);
+              }}>{Object.entries(PROVIDERS).map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select>
             </Row>
-            <Row
+            {provider === "chatgpt" && <Row
               label="ChatGPT"
               hint={!aiStatus ? "Checking…" : aiStatus.chatgpt.connected
                 ? <>Signed in{aiStatus.chatgpt.email ? ` as ${aiStatus.chatgpt.email}` : ""}. Uses your ChatGPT plan · <a href={USAGE_URL} target="_blank" rel="noreferrer">Manage usage</a></>
@@ -229,8 +243,8 @@ export function SettingsDialog({ theme, onTheme, night, onNight, wheelPaging, on
                   setAiStatus(result.status);
                 }}>{signingIn ? "Waiting for browser…" : "Continue with ChatGPT"}</button>
               )}
-            </Row>
-            <Row
+            </Row>}
+            {provider === "claude" && <Row
               label="Claude"
               hint={!aiStatus ? "Checking…" : !aiStatus.claude.installed
                 ? <>Uses your Claude subscription through <a href={CLAUDE_CODE_URL} target="_blank" rel="noreferrer">Claude Code</a>. Install it and sign in once.</>
@@ -239,11 +253,13 @@ export function SettingsDialog({ theme, onTheme, night, onNight, wheelPaging, on
                   : "Claude Code is installed but not signed in. Run claude in a terminal and sign in."}
             >
               <button className="btn ghost" disabled={!aiStatus} onClick={async () => setAiStatus({ ...aiStatus!, claude: await ai!.recheckClaude() })}>Check again</button>
-            </Row>
-          </Section>
+            </Row>}
+            {provider === "openrouter" && (aiStatus ? <OpenRouterSettings ai={ai} configured={!!aiStatus.openrouter?.configured}
+              onConfigured={configured => setAiStatus({ ...aiStatus, openrouter: { configured } })} /> : <p className="settings-hint">Checking connection…</p>)}
+          </section>
         )}
 
-        <Section title="Signature">
+        {section === "Storage" && <><StoredData /><Section title="Signature">
           <Row label="Remembered signature" hint={savedSignature
             ? "Saved on this computer (unencrypted) for quick signing."
             : "None. You can choose to remember one when you sign a document."}>
@@ -252,9 +268,9 @@ export function SettingsDialog({ theme, onTheme, night, onNight, wheelPaging, on
               catch { setError("Couldn't forget the signature. Please try again."); }
             }}>Forget</button>
           </Row>
-        </Section>
+        </Section></>}
 
-        {desktop && (
+        {desktop && section === "General" && (
           <Section title="Updates">
             {updatable && (
               <Row label="Automatic updates" hint={autoUpdate === false
@@ -282,11 +298,11 @@ export function SettingsDialog({ theme, onTheme, night, onNight, wheelPaging, on
           </Section>
         )}
 
-        <Section title="About">
+        {section === "General" && <Section title="About">
           <Row label="What's new" hint="Changes in each version of Folio.">
             <button className="btn ghost" onClick={onOpenChangelog}>View changelog</button>
           </Row>
-        </Section>
+        </Section>}
 
         {error && <p className="form-error">{error}</p>}
       </div>

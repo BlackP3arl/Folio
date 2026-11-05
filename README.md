@@ -143,8 +143,8 @@ Choose **Sign** in the toolbar to add a signature.
 
 ### Ask AI about a document
 
-- **Bring your own subscription:** use **Sign in with ChatGPT** or your Claude subscription through
-  [Claude Code](https://claude.com/claude-code). No API key or separate Folio account is needed.
+- **Choose a provider:** use your ChatGPT plan, your Claude subscription through
+  [Claude Code](https://claude.com/claude-code), or your own OpenRouter API key.
 - **Whole-document or passage questions:** open the Ask AI panel from the toolbar, select text and choose **Ask AI**,
   or ask about an existing highlight.
 - **Streaming answers** with clickable page citations that jump back to the source page.
@@ -155,7 +155,7 @@ Choose **Sign** in the toolbar to add a signature.
   conversation.
 - **Per-document history:** conversations are saved on this computer and restored when you reopen that document,
   except for password-protected PDFs. Starting a new conversation clears that document's saved chat.
-  Open **Settings → Stored data** to see how many documents have saved annotations or chats, including documents
+  Open **Settings → Storage → Stored data** to see how many documents have saved annotations or chats, including documents
   removed from Recent. You can clear either category separately. Annotations include document notes and bookmarks.
 - **Account settings:** choose your default provider, sign in to or out of ChatGPT, and check Claude Code's connection
   from **Settings → Ask AI**.
@@ -251,6 +251,10 @@ Then pick a provider at the top of the panel:
   [ChatGPT settings](https://chatgpt.com/settings/usage). Sign out, or change the default provider, in Folio's **Settings**.
 - **Claude:** install [Claude Code](https://claude.com/claude-code), run `claude` once in a terminal, and sign in with
   your Claude account (Pro or Max). Then click **Check again** in Folio. Questions use your Claude subscription.
+- **OpenRouter:** under **Settings → Ask AI**, choose OpenRouter and verify your [OpenRouter API key](https://openrouter.ai/settings/keys).
+  Search the text models or enter a model ID. OpenRouter bills your key. Reopen this section to check the connection,
+  replace the key, or remove it. If a model's context is too small for a document, choose a larger model or ask about
+  a selected passage. For passage questions Folio sends the selected passage, page number, filename and conversation.
 
 Ask AI is available in the desktop app only, not the browser version.
 
@@ -261,14 +265,16 @@ network requests only to:
 
 - check GitHub for updates (installed copies; can be turned off in **Settings**),
 - download the scan language packs you choose in **Settings** from the Tesseract.js project on GitHub,
+- verify an OpenRouter key or retrieve model names during OpenRouter setup,
 - open a link you give it (a webpage is loaded in a hidden, sandboxed window with its own temporary session, so no
   cookies or sign-ins are shared, and every permission is denied; its scripts run while it loads, as in any browser,
   and it's then printed to PDF), and
 - answer a question you ask in **Ask AI**. Only then, the document's text (up to about 400,000 characters), any passage
   you selected, and the conversation go to the provider you chose: OpenAI for ChatGPT, or Anthropic through your
-  installed Claude Code. Their privacy terms apply to that data.
+  installed Claude Code, or OpenRouter and the provider serving your chosen OpenRouter model. Their privacy terms apply to that data.
 
-For ChatGPT, Folio stores its sign-in tokens in its data folder (below, under `ai`), encrypted with the system's
+Folio stores an OpenRouter key only with operating-system credential protection. If secure storage is unavailable,
+enable or unlock your system key store to connect. For ChatGPT, Folio stores its sign-in tokens in its data folder (below, under `ai`), encrypted with the system's
 credential protection (Windows data protection, the macOS Keychain, or the Linux secret store; if a Linux desktop has
 no secret store, you sign in again each time Folio starts), and never exposes them to the page. For Claude, Folio runs your own Claude Code with every tool disabled;
 it never sees or stores your Claude credentials. The question's context is written to a temporary file for Claude Code
@@ -279,7 +285,7 @@ Stored locally in your user profile (`%APPDATA%\Folio` on Windows, `~/Library/Ap
 `~/.config/Folio` on Linux): recently opened PDFs and their thumbnails (up to 8,
 removable from the home screen with **Clear all**; password-protected PDFs are never kept), highlights, notes, and
 Ask AI conversations for each document (except password-protected ones), reading positions, preferences, and, only if you choose to remember
-it, your signature image. Apart from the ChatGPT sign-in, this data isn't encrypted, so anyone with access to your
+it, your signature image. Apart from provider credentials, this data isn't encrypted, so anyone with access to your
 user account can read it.
 
 ## Building from source
@@ -309,7 +315,7 @@ terminal has `ELECTRON_RUN_AS_NODE=1` set, unset it first.
   custom `app://` protocol with a strict Content Security Policy, runs the page sandboxed with context isolation, opens
   PDFs from the file manager, keeps a single window, downloads links, and handles updates. `webpage.cjs` converts
   webpages to PDF. `ai.cjs` runs Ask AI (ChatGPT
-  sign-in and requests, and Claude Code) so credentials never reach the page.
+  sign-in and requests, OpenRouter keys and requests, and Claude Code). Stored credentials stay in the main process.
 - `scripts/release.mjs` and `.github/workflows/release-build.yml`: the release pipeline (see
   [CONTRIBUTING.md](CONTRIBUTING.md#releasing)). `scripts/smoke-test.mjs` is the cross-platform smoke test CI runs.
   `scripts/screenshots.mjs` retakes the screenshots in this README (`npm run build`, then `node scripts/screenshots.mjs`).

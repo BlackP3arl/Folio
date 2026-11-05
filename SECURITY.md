@@ -48,7 +48,9 @@ Folio opens untrusted PDFs, so it's built to keep a malicious document contained
   with Electron `safeStorage` (Windows DPAPI, the macOS Keychain, or the Linux secret store; kept in memory only when
   no secret store is available) and never reach the page. Claude runs the user's own, unmodified Claude
   Code CLI with all tools, MCP servers, settings, and slash commands disabled, in an empty temporary folder; Folio never
-  handles Claude credentials. Document text goes to the chosen provider only when the user asks a question.
+  handles Claude credentials. An OpenRouter API key is verified and stored with OS credential protection by the main
+  process; the key is never returned to the reader. Key checks and model lookups send no document content.
+  Document text goes to the chosen provider only when the user asks a question. OpenRouter forwards the request to the model's serving provider.
 
 Known limitations:
 

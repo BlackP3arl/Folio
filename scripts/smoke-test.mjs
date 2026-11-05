@@ -11,6 +11,7 @@ import path from "node:path";
 import assert from "node:assert/strict";
 import { readerPage } from "./reader-page.mjs";
 import { checkReaderTools } from "./smoke-reader-tools.mjs";
+import { checkOpenRouter } from "./smoke-openrouter.mjs";
 
 const root = path.resolve(import.meta.dirname, "..");
 const require = createRequire(import.meta.url);
@@ -84,6 +85,7 @@ try {
   await page.locator(".textLayer span:not(.markedContent)").first().waitFor({ timeout: 30_000 });
   assert.match(await page.locator(".textLayer").first().innerText(), /A short tour of Folio/);
   console.log("ok  sample rendered with a text layer");
+  await checkOpenRouter(app, page);
 
   const toolbar = page.getByRole("toolbar", { name: "Tools" });
   for (const name of ["Select", "Highlight", "Draw", "Text", "Sign", "Edit mode"]) await toolbar.getByRole("button", { name, exact: true }).waitFor();
@@ -497,7 +499,7 @@ try {
   await page.getByRole("button", { name: "More" }).click();
   assert.equal(await darkMode.getAttribute("aria-checked"), "true");
   await page.getByRole("menuitem", { name: /Settings/ }).click();
-  await page.getByRole("dialog", { name: "Settings" }).getByText(/Manage updates, appearance, and Ask AI accounts/).waitFor();
+  await page.getByRole("navigation", { name: "Settings sections" }).getByRole("button", { name: "General" }).waitFor();
   const darkModeSwitch = page.getByRole("switch", { name: "PDF dark mode" });
   assert.equal(await darkModeSwitch.getAttribute("aria-checked"), "true");
   await darkModeSwitch.click();
@@ -808,12 +810,11 @@ try {
   await page.getByRole("button", { name: "More", exact: true }).click();
   await page.getByRole("menuitem", { name: /^Settings/ }).click();
   const settings = page.getByRole("dialog", { name: "Settings" });
+  await settings.getByRole("button", { name: "Storage", exact: true }).click();
   const stored = settings.locator(".stored-data");
   const clearNotes = stored.getByRole("button", { name: "Clear annotations…", exact: true });
   const clearChats = stored.getByRole("button", { name: "Clear chats…", exact: true });
   assert.equal(await stored.evaluate(el => el.open), false);
-  // The baseline has Reading followed directly by Ask AI. Only the new row differs.
-  await settings.screenshot({ path: path.join(shots, "stored-data-previous-layout.png"), style: ".stored-data { display: none !important; }" });
   await settings.screenshot({ path: path.join(shots, "stored-data-collapsed.png") });
   await stored.locator("summary").click();
   await stored.getByText(/^\d+ documents?$/).first().waitFor();
