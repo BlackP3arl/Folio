@@ -11,6 +11,7 @@ import path from "node:path";
 import assert from "node:assert/strict";
 import { readerPage } from "./reader-page.mjs";
 import { checkReaderTools } from "./smoke-reader-tools.mjs";
+import { checkOpenRouter } from "./smoke-openrouter.mjs";
 
 const root = path.resolve(import.meta.dirname, "..");
 const require = createRequire(import.meta.url);
@@ -47,7 +48,10 @@ const failures = [];
 try {
   const page = readerPage(await app.firstWindow());
   assert.ok(await app.evaluate(({ app }) => app.commandLine.hasSwitch("mute-audio")));
-  page.on("pageerror", (e) => failures.push(String(e)));
+  page.on("pageerror", (error) => {
+    console.error(error.stack ?? String(error));
+    failures.push(String(error));
+  });
   await page.getByRole("button", { name: /Try a sample/ }).waitFor({ timeout: 30_000 });
 
   const platformClass = await page.evaluate(() => [...document.documentElement.classList].find((c) => c.startsWith("platform-")));
@@ -84,6 +88,7 @@ try {
   await page.locator(".textLayer span:not(.markedContent)").first().waitFor({ timeout: 30_000 });
   assert.match(await page.locator(".textLayer").first().innerText(), /A short tour of Folio/);
   console.log("ok  sample rendered with a text layer");
+  await checkOpenRouter(app, page);
 
   const toolbar = page.getByRole("toolbar", { name: "Tools" });
   for (const name of ["Select", "Highlight", "Draw", "Text", "Sign", "Edit mode"]) await toolbar.getByRole("button", { name, exact: true }).waitFor();
@@ -169,21 +174,21 @@ try {
   await page.locator(".dirty-dot").waitFor();
   console.log("ok  a drawn signature placeholder fits the selected signature");
 
-  // Printing saves nothing, so the signature stays marked as unsaved. The print frame is stubbed for the check, so no
-  // system print dialog opens.
-  await page.evaluate(() => {
-    const frame = HTMLIFrameElement.prototype;
-    const stub = { printed: 0, src: Object.getOwnPropertyDescriptor(frame, "src"), contentWindow: Object.getOwnPropertyDescriptor(frame, "contentWindow") };
-    window.folioPrintStub = stub;
-    Object.defineProperty(frame, "src", { configurable: true, set(url) { this.dataset.src = url; } });
-    Object.defineProperty(frame, "contentWindow", { configurable: true, get: () => ({ focus() {}, print() { stub.printed++; } }) });
-  });
+  // Stub the PDF viewer handoff in this renderer so printing cannot open a system dialog.
+  await page.evaluate(interceptPdfPrint);
   await page.keyboard.press("ControlOrMeta+p");
-  await page.waitForFunction(() => window.folioPrintStub.printed === 1, null, { timeout: 15_000 });
-  await page.evaluate(() => {
-    Object.defineProperty(HTMLIFrameElement.prototype, "src", window.folioPrintStub.src);
-    Object.defineProperty(HTMLIFrameElement.prototype, "contentWindow", window.folioPrintStub.contentWindow);
-  });
+  const printDialog = page.getByRole("dialog", { name: "Print", exact: true });
+  await printDialog.getByRole("img", { name: "Preview of page 1" }).waitFor({ timeout: 15_000 });
+  await printDialog.screenshot({ path: path.join(shots, "print-basic.png") });
+  await printDialog.getByRole("tab", { name: "Advanced" }).click();
+  await printDialog.getByRole("button", { name: "Booklet" }).click();
+  await printDialog.getByRole("img", { name: "Preview of sheet 1" }).waitFor();
+  await printDialog.screenshot({ path: path.join(shots, "print-advanced.png") });
+  await printDialog.getByRole("tab", { name: "Basic" }).click();
+  await printDialog.getByRole("button", { name: "Print…", exact: true }).click();
+  await page.waitForFunction(() => window.printedPdf);
+  assert.ok(await page.evaluate(() => window.printedPdf.type === "application/pdf" && /\/Subtype\s*\/Stamp\b/.test(window.printedPdf.bytes)));
+  await page.evaluate(() => window.restorePrintFrame());
   assert.ok(await page.locator(".dirty-dot").isVisible(), "printing cleared the unsaved marker");
   console.log("ok  printing keeps unsaved work marked as unsaved");
 
@@ -505,7 +510,7 @@ try {
   await page.getByRole("button", { name: "More" }).click();
   assert.equal(await darkMode.getAttribute("aria-checked"), "true");
   await page.getByRole("menuitem", { name: /Settings/ }).click();
-  await page.getByRole("dialog", { name: "Settings" }).getByText(/Manage updates, appearance, and Ask AI accounts/).waitFor();
+  await page.getByRole("navigation", { name: "Settings sections" }).getByRole("button", { name: "General" }).waitFor();
   const darkModeSwitch = page.getByRole("switch", { name: "PDF dark mode" });
   assert.equal(await darkModeSwitch.getAttribute("aria-checked"), "true");
   await darkModeSwitch.click();
@@ -563,6 +568,80 @@ try {
   await page.waitForTimeout(500);
   await page.screenshot({ path: path.join(shots, `smoke-${process.platform}.png`) });
   await checkReaderTools(app, page, env.FOLIO_TEST_USER_DATA, shots);
+
+  // Thumbnails keep each page's shape and relative size: letter portrait, letter landscape, and an 11x17 sheet.
+  const mixed = pdfWithPageSizes([[612, 792], [792, 612], [1224, 792]]);
+  await app.evaluate(({ BrowserWindow }, data) =>
+    BrowserWindow.getAllWindows()[0].webContents.send("folio:open-file", { name: "Mixed sizes.pdf", data: Buffer.from(data) }), [...mixed]);
+  await page.window.waitForFunction(() => document.title.startsWith("Mixed sizes.pdf"), null, { timeout: 15_000 });
+  await page.getByRole("button", { name: "More", exact: true }).click();
+  await page.getByRole("menuitem", { name: /^Print\b/ }).click();
+  const recordPrint = process.env.FOLIO_PRINT_VIDEO === "1";
+  if (recordPrint) {
+    await printDialog.getByRole("img", { name: "Preview of page 1" }).waitFor();
+    const size = await page.window.evaluate(() => ({ width: innerWidth, height: innerHeight }));
+    await page.window.screencast.start({ path: path.join(shots, "print-preview.webm"), size, fps: 12 });
+  }
+  for (const [i, ratio] of [612 / 792, 792 / 612, 1224 / 792].entries()) {
+    if (i) await printDialog.getByRole("button", { name: "Next page" }).click();
+    await printDialog.getByRole("img", { name: `Preview of page ${i + 1}` }).waitFor();
+    const bounds = await printDialog.locator(".print-paper").boundingBox();
+    assert.ok(Math.abs(bounds.width / bounds.height - ratio) < 0.01, "print preview lost the page dimensions");
+    if (recordPrint) await page.waitForTimeout(1050);
+  }
+  if (recordPrint) {
+    await printDialog.getByRole("tab", { name: "Advanced" }).click();
+    await printDialog.getByRole("button", { name: "Booklet" }).click();
+    await printDialog.getByRole("img", { name: "Preview of sheet 1" }).waitFor();
+    await page.waitForTimeout(1300);
+    await page.window.screencast.stop();
+  }
+  await printDialog.getByRole("button", { name: "Close", exact: true }).click();
+  if (!(await page.locator(".sidebar").count())) await page.keyboard.press("ControlOrMeta+Backslash");
+  await page.getByRole("tab", { name: "Pages" }).click();
+  // Waits until the page sizes have loaded and the third thumbnail is wider than the first.
+  await page.waitForFunction(() => {
+    const f = [...document.querySelectorAll(".thumb-frame")];
+    return f.length === 3 && f[2].getBoundingClientRect().width > f[0].getBoundingClientRect().width;
+  }, null, { timeout: 15_000 });
+  const frames = await page.locator(".thumb-frame").evaluateAll((els) => els.map((el) => {
+    const r = el.getBoundingClientRect();
+    return { width: r.width, height: r.height };
+  }));
+  const near = (a, b) => Math.abs(a - b) <= 1;
+  assert.ok(frames[0].height > frames[0].width, `letter portrait thumbnail isn't portrait: ${JSON.stringify(frames[0])}`);
+  assert.ok(frames[1].width > frames[1].height, `letter landscape thumbnail isn't landscape: ${JSON.stringify(frames[1])}`);
+  assert.ok(near(frames[0].width, frames[1].height) && near(frames[0].height, frames[1].width),
+    `letter pages aren't the same size turned: ${JSON.stringify(frames)}`);
+  // 11x17 landscape is 11in tall like portrait letter, and 17in wide against letter's 8.5in.
+  assert.ok(near(frames[2].height, frames[0].height) && Math.abs(frames[2].width / frames[0].width - 2) < 0.05,
+    `11x17 thumbnail isn't to scale with letter: ${JSON.stringify(frames)}`);
+  console.log("ok  thumbnails keep each page's shape and size:", frames.map((f) => `${Math.round(f.width)}x${Math.round(f.height)}`).join(", "));
+
+  // The bookmark filter can show page 2 in row 1 while the document's largest sheet is hidden.
+  await page.getByRole("button", { name: "Bookmark page 2", exact: true }).click();
+  await filter.click();
+  await page.waitForFunction(() => document.querySelectorAll(".thumb").length === 1);
+  const filtered = await page.locator('.thumb[data-page="2"] .thumb-frame').boundingBox();
+  assert.ok(filtered && near(filtered.width, frames[1].width) && near(filtered.height, frames[1].height));
+  await filter.click();
+
+  // In the page organizer, a moved page takes its own shape to its new row: drag the 11x17 sheet to the top.
+  await page.getByRole("button", { name: "Reorder pages" }).click();
+  const organized = (n) => page.locator(`.thumb[data-page="${n}"]`);
+  await organized(3).dragTo(organized(1));
+  assert.equal(await organized(3).getAttribute("aria-label"), "Page 3, position 1");
+  const rows = await page.locator(".thumb").evaluateAll((els) => els.map((el) => {
+    const r = el.querySelector(".thumb-frame").getBoundingClientRect();
+    return { page: Number(el.dataset.page), top: el.getBoundingClientRect().top, width: r.width, height: r.height };
+  }));
+  assert.deepEqual(rows.map((r) => r.page), [3, 1, 2]);
+  assert.ok(rows[0].top < rows[1].top && rows[1].top < rows[2].top, `rows are out of order: ${JSON.stringify(rows)}`);
+  const sameFrame = (row, frame) => near(row.width, frame.width) && near(row.height, frame.height);
+  assert.ok(sameFrame(rows[0], frames[2]) && sameFrame(rows[1], frames[0]) && sameFrame(rows[2], frames[1]),
+    `reordered thumbnails lost their shape: ${JSON.stringify(rows)}`);
+  await page.getByRole("button", { name: "Cancel" }).click();
+  console.log("ok  reordered thumbnails keep each page's shape:", rows.map((r) => `page ${r.page} ${Math.round(r.width)}x${Math.round(r.height)}`).join(", "));
 
   // A Word document opens converted to PDF (by Word, LibreOffice, or Folio itself, whichever the computer has),
   // and the PDF is saved next to it. Opening the document again reuses that PDF.
@@ -735,8 +814,116 @@ try {
   await aiPanel.getByRole("button", { name: "Close Ask AI" }).click();
   console.log("ok  closing Ask AI stops the answer in progress");
 
+  await page.getByRole("button", { name: "Ask AI", exact: true }).click();
+  await aiPanel.getByText("First question").waitFor();
+  if (await sidebarToggle.getAttribute("aria-pressed") !== "true") await sidebarToggle.click();
+  await page.getByRole("tab", { name: /^Notes/ }).click();
+  const documentNote = page.getByLabel("Notes about this document");
+  await documentNote.fill("Note in the other tab");
+  const readerName = await page.evaluate(() => document.title.replace(/ — Folio$/, ""));
+  await page.keyboard.press("ControlOrMeta+t");
+  await page.getByRole("button", { name: "More", exact: true }).click();
+  await page.getByRole("menuitem", { name: /^Settings/ }).click();
+  const settings = page.getByRole("dialog", { name: "Settings" });
+  await settings.getByRole("button", { name: "Storage", exact: true }).click();
+  const stored = settings.locator(".stored-data");
+  const clearNotes = stored.getByRole("button", { name: "Clear annotations…", exact: true });
+  const clearChats = stored.getByRole("button", { name: "Clear chats…", exact: true });
+  assert.equal(await stored.evaluate(el => el.open), false);
+  await settings.screenshot({ path: path.join(shots, "stored-data-collapsed.png") });
+  await stored.locator("summary").click();
+  await stored.getByText(/^\d+ documents?$/).first().waitFor();
+  assert.ok(await clearNotes.isEnabled() && await clearChats.isEnabled());
+  await stored.screenshot({ path: path.join(shots, "stored-data-expanded.png") });
+  const confirmation = stored.getByRole("alertdialog");
+  for (const [trigger, question] of [[clearNotes, "Clear all saved annotations?"], [clearChats, "Clear all saved chats?"]]) {
+    await trigger.click();
+    await confirmation.getByText(question, { exact: true }).waitFor();
+    assert.ok(await confirmation.getByRole("button", { name: "Cancel" }).evaluate(el => el === document.activeElement));
+    await confirmation.getByRole("button", { name: "Cancel" }).click();
+    assert.ok(await clearNotes.isEnabled() && await clearChats.isEnabled());
+  }
+  await clearNotes.click();
+  await confirmation.getByRole("button", { name: "Clear annotations", exact: true }).click();
+  await stored.getByText("0 documents", { exact: true }).waitFor();
+  assert.ok(await clearNotes.isDisabled() && await clearChats.isEnabled());
+  await clearChats.click();
+  await confirmation.getByRole("button", { name: "Clear chats", exact: true }).click();
+  await confirmation.waitFor({ state: "detached" });
+  assert.ok(await clearChats.isDisabled());
+  await settings.getByRole("button", { name: "Close" }).click();
+  await docs.getByRole("tab", { name: readerName, exact: true }).click();
+  assert.equal(await documentNote.inputValue(), "");
+  assert.equal(await aiPanel.getByText("First question").count(), 0);
+  await aiPanel.getByRole("button", { name: "Close Ask AI" }).click();
+  console.log("ok  Stored data counts, cancellation, separate confirmations and open readers");
+
+  const longPdf = pdfWithPageSizes(Array.from({ length: 101 }, () => [612, 792]));
+  await app.evaluate(({ BrowserWindow }, data) => BrowserWindow.getAllWindows()[0].webContents.send(
+    "folio:open-file", { name: "Print 101 pages.pdf", data: Buffer.from(data) }), [...longPdf]);
+  await page.window.waitForFunction(() => document.title.startsWith("Print 101 pages.pdf"));
+  await page.getByRole("button", { name: "More", exact: true }).click();
+  await page.getByRole("menuitem", { name: /^Print\b/ }).click();
+  await printDialog.getByRole("img", { name: "Preview of page 1" }).waitFor();
+  await printDialog.getByRole("tab", { name: "Advanced" }).click();
+  await printDialog.getByRole("alert").filter({ hasText: /100 sheets/ }).waitFor();
+  await printDialog.getByRole("tab", { name: "Basic" }).click();
+  await page.evaluate(interceptPdfPrint);
+  await printDialog.getByRole("button", { name: "Print…", exact: true }).click();
+  await page.waitForFunction(() => window.printedPdf);
+  assert.equal(await page.evaluate(() => window.printedPdf.bytes), longPdf.toString("utf8"));
+  await page.evaluate(() => window.restorePrintFrame());
+  console.log("ok  ordinary PDF printing remains available beyond the advanced sheet limit");
+
   assert.deepEqual(failures, []);
   console.log(`PASS (${process.platform})`);
 } finally {
   await app.close();
+}
+
+function interceptPdfPrint() {
+  const proto = HTMLIFrameElement.prototype;
+  const src = Object.getOwnPropertyDescriptor(proto, "src"), content = Object.getOwnPropertyDescriptor(proto, "contentWindow");
+  window.printedPdf = null;
+  Object.defineProperty(proto, "src", { configurable: true, set(url) { this.dataset.printUrl = url; } });
+  Object.defineProperty(proto, "contentWindow", { configurable: true, get() { return {
+    focus() {}, print: async () => {
+      const response = await fetch(this.dataset.printUrl);
+      window.printedPdf = { type: response.headers.get("Content-Type"), bytes: await response.text() };
+    },
+  }; } });
+  window.restorePrintFrame = () => { Object.defineProperty(proto, "src", src); Object.defineProperty(proto, "contentWindow", content); };
+}
+
+// Vector artwork makes orientation and clipping visible in the preview recording.
+function pdfWithPageSizes(sizes) {
+  const fontId = sizes.length + 3;
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    `<< /Type /Pages /Kids [${sizes.map((_, i) => `${i + 3} 0 R`).join(" ")}] /Count ${sizes.length} >>`,
+    ...sizes.map(([w, h], i) => `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${w} ${h}] /Resources << /Font << /F1 ${fontId} 0 R >> >> /Contents ${fontId + 1 + i} 0 R >>`),
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    ...sizes.map(([w, h], i) => {
+      const lines = [
+        `0.98 0.97 0.94 rg 0 0 ${w} ${h} re f`,
+        `0.13 0.24 0.22 rg BT /F1 16 Tf 40 ${h - 55} Td (NORTH COVE FIELD SURVEY) Tj ET`,
+        `BT /F1 34 Tf 40 ${h - 116} Td (Shoreline profile) Tj ET`,
+        `0.85 0.90 0.84 rg 40 ${h * .32} ${w - 80} ${h * .35} re f`,
+        `0.44 0.61 0.54 rg 40 ${h * .32} m 40 ${h * .47} l ${w * .28} ${h * .42} ${w * .54} ${h * .60} ${w - 40} ${h * .52} c ${w - 40} ${h * .32} l h f`,
+        `0.13 0.24 0.22 rg BT /F1 18 Tf 40 ${h * .26} Td (Field observations / Station ${i + 1}) Tj ET`,
+      ].join("\n");
+      return `<< /Length ${lines.length} >>\nstream\n${lines}\nendstream`;
+    }),
+  ];
+  let body = "%PDF-1.4\n";
+  const offsets = objects.map((object, i) => {
+    const offset = body.length;
+    body += `${i + 1} 0 obj\n${object}\nendobj\n`;
+    return offset;
+  });
+  const xref = body.length;
+  body += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  body += offsets.map((o) => `${String(o).padStart(10, "0")} 00000 n \n`).join("");
+  body += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  return Buffer.from(body, "latin1");
 }

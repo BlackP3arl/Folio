@@ -2,6 +2,8 @@
 const { contextBridge, ipcRenderer, webUtils } = require("electron");
 
 contextBridge.exposeInMainWorld("folioDesktop", {
+  getPrinters: () => ipcRenderer.invoke("folio:printers"),
+  printSheets: (job) => ipcRenderer.invoke("folio:print-sheets", job),
   /** Called with (name, data, note?) whenever a PDF is opened from Explorer, or a Word document has been converted. */
   onOpenFile(callback) {
     const listener = (_e, file) => callback(file.name, new Uint8Array(file.data), file.note ?? undefined, file.token);
@@ -29,6 +31,7 @@ contextBridge.exposeInMainWorld("folioDesktop", {
   ready: () => ipcRenderer.invoke("folio:ready"),
   platform: process.platform,
   openDownload: () => ipcRenderer.invoke("folio:open-download"),
+  downloadOcrModel: (code) => ipcRenderer.invoke("folio:download-ocr-model", code),
   /** Downloads a PDF from an http(s) link; resolves to { name, data: Uint8Array }, or null if the user said no. */
   async fetchPdf(url) {
     const file = await ipcRenderer.invoke("folio:fetch-pdf", url);
@@ -58,6 +61,8 @@ contextBridge.exposeInMainWorld("folioDesktop", {
     chatgptWelcomeSeen: () => ipcRenderer.invoke("folio:ai-chatgpt-welcome-seen"),
     chatgptModels: () => ipcRenderer.invoke("folio:ai-chatgpt-models"),
     recheckClaude: () => ipcRenderer.invoke("folio:ai-claude-recheck"),
+    openRouterKey: (action, key) => ipcRenderer.invoke("folio:ai-router-key", action, key),
+    openRouterModels: () => ipcRenderer.invoke("folio:ai-router-models"),
     ask: (request) => ipcRenderer.invoke("folio:ai-ask", request),
     cancel: (id) => ipcRenderer.invoke("folio:ai-cancel", id),
     /** Called with { id, type: "delta" | "done" | "error", text?, message?, code?, link? } for every answer. */

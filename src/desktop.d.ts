@@ -10,6 +10,9 @@ interface UpdateStatus {
 
 // Present only when Folio runs as the desktop app (see electron/preload.cjs).
 interface FolioDesktop {
+  getPrinters(): Promise<{ name: string; displayName: string; isDefault: boolean }[]>;
+  printSheets(job: { images: string[]; paper: "Letter" | "A4" | "Legal"; landscape: boolean; dpi: 150 | 300 | 600;
+    copies: number; printer: string; booklet: boolean }): Promise<{ ok: boolean; error?: string }>;
   /** `note` says where a converted Word document's PDF was saved. */
   onOpenFile(callback: (name: string, data: Uint8Array, note?: string, token?: string) => void): () => void;
   onConverting(callback: (name: string, token: string) => void): () => void;
@@ -28,6 +31,7 @@ interface FolioDesktop {
   platform: string;
   /** Opens the releases page (macOS, where updates are downloaded manually). */
   openDownload(): Promise<void>;
+  downloadOcrModel(code: string): Promise<Uint8Array<ArrayBuffer>>;
   openInstallation(): Promise<string>;
   setTheme(theme: string): void;
   installUpdate(): void;
@@ -39,6 +43,7 @@ interface FolioDesktop {
 }
 
 interface AiStatus {
+  openrouter: { configured: boolean };
   chatgpt: { connected: boolean; email: string; name: string; welcomeSeen: boolean; encrypted: boolean };
   claude: { installed: boolean; loggedIn: boolean; version?: string; subscription?: boolean; authMethod?: string };
 }
@@ -65,11 +70,15 @@ interface FolioAi {
   chatgptWelcomeSeen(): Promise<boolean>;
   chatgptModels(): Promise<{ ok: boolean; models?: { id: string; name: string }[]; error?: string; code?: string }>;
   recheckClaude(): Promise<AiStatus["claude"]>;
-  ask(request: { id: string; provider: "chatgpt" | "claude"; model: string; document: { name: string; text: string; truncated: boolean };
+  openRouterKey(action: "save" | "check" | "remove", key?: string): Promise<{ ok: boolean; configured?: boolean; error?: string }>;
+  openRouterModels(): Promise<{ ok: boolean; models?: OpenRouterModel[]; error?: string }>;
+  ask(request: { id: string; provider: "chatgpt" | "claude" | "openrouter"; model: string; document: { name: string; text: string; truncated: boolean };
     messages: AiMessage[] }): Promise<boolean>;
   cancel(id: string): Promise<boolean>;
   onEvent(callback: (event: AiEvent) => void): () => void;
 }
+
+interface OpenRouterModel { id: string; name: string; contextLength: number | null }
 
 interface Window {
   folioDesktop?: FolioDesktop;

@@ -10,7 +10,7 @@ import {
 } from "./viewer";
 import { AnnotationEditorParamsType, AnnotationEditorType } from "pdfjs-dist";
 import { loadPdf, reorderPdf, thumbnailDataUrl, type PDFDocumentProxy } from "./pdf";
-import { contentKey, getRecent, MAX_RECENT_FILE_BYTES, removeRecent, saveRecent, updateLastPage } from "./recent";
+import { contentKey, getRecent, MAX_RECENT_FILE_BYTES, onStoredDataCleared, removeRecent, saveRecent, updateLastPage } from "./recent";
 import { readPdfBlob, readPdfResponse } from "./pdfInput";
 import { FIT_SCALES, readView, writeView, type ReadingView } from "./session";
 import { DocumentTabBar } from "./DocumentTabBar";
@@ -27,10 +27,11 @@ import { notesJson, notesMarkdown } from "./noteExport";
 import { copyText } from "./clipboard";
 import { imageRegions, trackPageImages } from "./nightImages";
 import { recognizeScannedPages } from "./pageOcr";
+import { scanLanguagesFrom } from "./scanLanguage";
 import { ImageMenu, ImageViewer, type ImageTarget } from "./ImageViewer";
 import { MoreMenu, type MoreItem } from "./MoreMenu";
-import { keys } from "./platform";
-import { AiPanel, type AiContext } from "./AiPanel";
+import { IS_MAC, keys } from "./platform";
+import { AiPanel, forgetClearedChats, type AiContext } from "./AiPanel";
 import { ZoomMenu } from "./ZoomMenu";
 import { SearchBar, type FindResult } from "./SearchBar";
 import { AboutDialog, InfoDialog, OpenUrlDialog, PasswordDialog, ShortcutsDialog, parseWebUrl } from "./Dialogs";
@@ -41,11 +42,13 @@ import { saveVersion, type PdfChange } from "./versionHistory";
 import { SettingsDialog } from "./SettingsDialog";
 import { UpstreamUpdatesDialog } from "./UpstreamUpdatesDialog";
 import { ChangelogDialog } from "./ChangelogDialog";
+import { PrintDialog } from "./PrintDialog";
 import type { Release } from "./releaseNotes";
 import { detectSignatureTargets, placeSignatures, signaturePlacements, type SignatureTarget } from "./signatures";
 import { keepDrawingPointer } from "./drawing";
 import { drawShapes, type Shape } from "./shapes";
 import { enableWheelPaging } from "./wheelPaging";
+import { LinkHistory, type HistoryState } from "./linkHistory";
 
 type Tool = "select" | "highlight" | "ink" | "freetext";
 
@@ -137,6 +140,17 @@ export default function App({ tabs, tabKey, upgradeNotes }: { tabs: DocumentTabs
   const viewerRef = useRef<PDFViewer | null>(null);
   const busRef = useRef<EventBus | null>(null);
   const linkRef = useRef<PDFLinkService | null>(null);
+  const navigationRef = useRef<LinkHistory | null>(null);
+  const [navigation, setNavigation] = useState<HistoryState>({ back: false, forward: false });
+  const [backHint, setBackHint] = useState<string | null>(null);
+  const backHintButton = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!backHint) return;
+    const timer = window.setTimeout(() => {
+      if (document.activeElement !== backHintButton.current) setBackHint(null);
+    }, 5500);
+    return () => window.clearTimeout(timer);
+  }, [backHint]);
   const findRef = useRef<PDFFindController | null>(null);
   const restoreRef = useRef<ReadingView | null>(null);
   const restoringRef = useRef(false);
@@ -145,6 +159,20 @@ export default function App({ tabs, tabKey, upgradeNotes }: { tabs: DocumentTabs
   const lastPageRef = useRef<number>(1);
   const docRef = useRef<OpenDoc | null>(null);
   const markupRef = useRef<MarkupController | null>(null);
+  const [chatGeneration, setChatGeneration] = useState(0);
+  const [notesGeneration, setNotesGeneration] = useState(0);
+  useEffect(() => onStoredDataCleared((category, generation) => {
+    if (category === "ai") {
+      forgetClearedChats(generation);
+      setChatGeneration(current => Math.max(current, generation));
+    } else if (category === "notes") {
+      markupRef.current?.clearSaved(generation);
+      if (persistRef.current) {
+        setNotesGeneration(current => Math.max(current, generation));
+        setNoteBox(null);
+      }
+    }
+  }), []);
   const persistRef = useRef(false);
   const exporting = useRef<PDFDocumentProxy | null>(null);
   const savingCopy = useRef(false);
@@ -153,6 +181,7 @@ export default function App({ tabs, tabKey, upgradeNotes }: { tabs: DocumentTabs
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(1);
   const [textStatus, setTextStatus] = useState<string | null>(null);
+  const [scanLanguages, setScanLanguages] = useState(() => scanLanguagesFrom(localStorage.getItem("folio:scan-language")));
   const [pageInput, setPageInput] = useState("1");
   const [numPages, setNumPages] = useState(0);
   const [scale, setScale] = useState(1);
@@ -191,7 +220,10 @@ export default function App({ tabs, tabKey, upgradeNotes }: { tabs: DocumentTabs
   const unsaved = !!doc?.sourceId || dirty || editorDirty || (!!pageOrder && !pageDraft?.copy);
   const [focus, setFocus] = useState(false);
   const [dragging, setDragging] = useState(false);
-  const [dialog, setDialog] = useState<"info" | "shortcuts" | "about" | "url" | "settings" | "upstream" | "changelog" | "upgrade" | null>(
+  const [printCopy, setPrintCopy] = useState<{ pdf: PDFDocumentProxy; bytes: Uint8Array; page: number; name: string } | null>(null);
+  const preparingPrint = useRef(false);
+  useEffect(() => () => { if (printCopy) void printCopy.pdf.loadingTask.destroy(); }, [printCopy]);
+  const [dialog, setDialog] = useState<"info" | "shortcuts" | "about" | "url" | "settings" | "ai-settings" | "upstream" | "changelog" | "upgrade" | null>(
     upgradeNotes.length ? "upgrade" : null);
   // A pasted or dropped link waits in Open from URL, so the user sees where it goes before Folio contacts it.
   const [linkDraft, setLinkDraft] = useState("");
@@ -269,6 +301,14 @@ export default function App({ tabs, tabKey, upgradeNotes }: { tabs: DocumentTabs
     trackPageImages(eventBus);
     const stopDrawingPointer = keepDrawingPointer(container);
     linkService.setViewer(viewer);
+    const history = new LinkHistory(viewer, (state, followed) => {
+      setNavigation(state);
+      if (followed && tabs.active === tabKey && tabs.takeLinkHint()) {
+        setBackHint(followed.from === followed.to ? "Back to previous spot" : `Back to page ${followed.from}`);
+      } else setBackHint(null);
+    });
+    linkService.setHistory(history);
+    navigationRef.current = history;
     viewerRef.current = viewer;
     markupRef.current = new MarkupController(eventBus, viewer, setMarkup);
     busRef.current = eventBus;
@@ -287,7 +327,6 @@ export default function App({ tabs, tabKey, upgradeNotes }: { tabs: DocumentTabs
         viewer.scrollPageIntoView({ pageNumber: restoredPage, destArray: [null, { name: "XYZ" }, saved.left, saved.top, null] });
       }
       restoringRef.current = false;
-      recognizeScannedPages(eventBus, viewer, setTextStatus);
     });
     eventBus.on("updateviewarea", ({ location }: { location: { pageNumber: number; top: number; left: number } }) => {
       const current = docRef.current;
@@ -335,7 +374,19 @@ export default function App({ tabs, tabKey, upgradeNotes }: { tabs: DocumentTabs
     };
     container.addEventListener("wheel", onWheel, { passive: false });
     return () => { stopDrawingPointer(); container.removeEventListener("wheel", onWheel); };
-  }, []);
+  }, [tabs, tabKey]);
+
+  useEffect(() => {
+    const viewer = viewerRef.current!, bus = busRef.current!;
+    const events = new AbortController();
+    let stop: (() => void) | undefined;
+    const start = () => { stop = recognizeScannedPages(bus, viewer, scanLanguages, setTextStatus); };
+    const end = () => { stop?.(); stop = undefined; };
+    bus.on("pagesinit", start, { signal: events.signal });
+    bus.on("pagesdestroy", end, { signal: events.signal });
+    if (viewer.pagesCount) start();
+    return () => { events.abort(); end(); };
+  }, [scanLanguages]);
 
   useEffect(() => {
     const viewer = viewerRef.current!;
@@ -403,6 +454,7 @@ export default function App({ tabs, tabKey, upgradeNotes }: { tabs: DocumentTabs
         viewer.setDocument(pdf);
         unattached = undefined;
         linkRef.current!.setDocument(pdf, null);
+        navigationRef.current!.reset();
         prev?.pdf.loadingTask.destroy();
 
         // Markup is saved automatically; only documents Folio can't store count as having unsaved changes.
@@ -874,20 +926,29 @@ export default function App({ tabs, tabKey, upgradeNotes }: { tabs: DocumentTabs
   };
 
   const print = async () => {
-    if (contentRef.current && !(await contentRef.current.finish())) return;
-    const doc = docRef.current;
-    // pdf.js marks the document as saved once it has written the bytes, but printing saves nothing.
-    let copy: Awaited<ReturnType<typeof currentBytes>>;
+    if (printCopy || preparingPrint.current) return;
+    preparingPrint.current = true;
     try {
-      copy = await currentBytes();
+      if (contentRef.current && !(await contentRef.current.finish())) return;
+      const source = docRef.current;
+      if (!source) return;
+      // Printing writes a snapshot, so preserve the unsaved marker after pdf.js serializes the edits.
+      const copy = await currentBytes(source).finally(() => {
+        if (dirty && docRef.current === source) setDirty(true);
+      });
+      if (!copy || docRef.current !== source) return;
+      if (!window.folioDesktop) { printPdfBytes(copy.bytes); return; }
+      const snapshot = await loadPdf(copy.bytes, opening.current!.signal, source.password);
+      if (docRef.current !== source) { void snapshot.loadingTask.destroy(); return; }
+      setPrintCopy({ pdf: snapshot, bytes: copy.bytes, page: pageOrder ? pageOrder.indexOf(page) + 1 : page, name: source.name });
     } catch {
       if (docRef.current === doc) setError("Couldn't print this document.");
-      return;
     } finally {
-      if (dirty && docRef.current === doc) setDirty(true);
+      preparingPrint.current = false;
     }
-    if (!copy || docRef.current !== doc) return;
-    const { bytes } = copy;
+  };
+
+  const printPdfBytes = (bytes: Uint8Array) => {
     const url = URL.createObjectURL(pdfBlob(bytes));
     const frame = document.createElement("iframe");
     frame.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0";
@@ -957,6 +1018,7 @@ export default function App({ tabs, tabKey, upgradeNotes }: { tabs: DocumentTabs
       }
       if (event.key === "folio:night") setNight(event.newValue === "1");
       if (event.key === "folio:wheel-paging") setWheelPaging(event.newValue === "1");
+      if (event.key === "folio:scan-language" || event.key === null) setScanLanguages(scanLanguagesFrom(event.newValue));
     };
     window.addEventListener("storage", sync);
     return () => window.removeEventListener("storage", sync);
@@ -1003,6 +1065,25 @@ export default function App({ tabs, tabKey, upgradeNotes }: { tabs: DocumentTabs
     const onKey = (e: KeyboardEvent) => {
       if (tabs.active !== tabKey) return;
       const mod = e.ctrlKey || e.metaKey;
+      const target = e.target;
+      const typing = target instanceof Element && (target.closest("input, textarea, select, .freeTextEditor") ||
+        (target instanceof HTMLElement && target.isContentEditable));
+      if (e.altKey && !mod && !e.shiftKey && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+        if (e.defaultPrevented) return;
+        if (typing || signing || pending || imageView || printCopy || document.querySelector('[aria-modal="true"]')) {
+          // Chromium can leave the web reader here; macOS uses Option+arrow for native text editing.
+          if (!IS_MAC && !window.folioDesktop) e.preventDefault();
+        } else if (docRef.current) {
+          e.preventDefault();
+          if (e.key === "ArrowLeft") navigationRef.current?.back();
+          else navigationRef.current?.forward();
+        }
+        return;
+      }
+      if (printCopy) {
+        if ((e.ctrlKey || e.metaKey) && ["p", "o", "w", "t", "s", ",", "tab"].includes(e.key.toLowerCase())) e.preventDefault();
+        return;
+      }
       if (mod && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "t") {
         e.preventDefault(); tabs.library(); return;
       }
@@ -1013,8 +1094,6 @@ export default function App({ tabs, tabKey, upgradeNotes }: { tabs: DocumentTabs
         e.preventDefault(); tabs.cycle(e.shiftKey ? -1 : 1); return;
       }
       if (signing) return;
-      const target = e.target as HTMLElement;
-      const typing = target.closest("input, textarea, select, [contenteditable=true], .freeTextEditor");
 
       if (mod && e.key === ",") {
         e.preventDefault();
@@ -1243,6 +1322,9 @@ export default function App({ tabs, tabKey, upgradeNotes }: { tabs: DocumentTabs
             items={[
               ...(doc
                 ? ([
+                    ...(navigation.back ? [{ kind: "action", icon: "chevronLeft", label: "Back", shortcut: keys("Alt+←"), onSelect: () => navigationRef.current?.back() }] : []),
+                    ...(navigation.forward ? [{ kind: "action", icon: "chevronRight", label: "Forward", shortcut: keys("Alt+→"), onSelect: () => navigationRef.current?.forward() }] : []),
+                    ...(navigation.back || navigation.forward ? [{ kind: "divider" }] : []),
                     { kind: "action", icon: "plus", label: "New tab", shortcut: keys("Ctrl T"), onSelect: () => tabs.library() },
                     { kind: "action", icon: "close", label: "Close document", shortcut: keys("Ctrl W"), onSelect: () => void tabs.close(tabKey) },
                     { kind: "divider" },
@@ -1287,6 +1369,7 @@ export default function App({ tabs, tabKey, upgradeNotes }: { tabs: DocumentTabs
             noteCount={markup.marks.filter((m) => m.type === "highlight").length}
             notes={
               <NotesPanel
+                key={notesGeneration}
                 state={markup}
                 onExport={exportNotes}
                 persisted={persistRef.current}
@@ -1332,6 +1415,14 @@ export default function App({ tabs, tabKey, upgradeNotes }: { tabs: DocumentTabs
                 <select className="draw-tool" aria-label="Drawing tool" value={drawTool}
                   onChange={e => setDrawTool(e.target.value as typeof drawTool)}>
                   {["Pen", "Rectangle", "Oval", "Arrow"].map(name => <option key={name}>{name}</option>)}
+                </select>
+              )}
+              {tool === "ink" && drawTool === "Pen" && (
+                <select className="draw-tool" aria-label="Pen width" title="Pen width" defaultValue={markupRef.current?.penWidth ?? 1}
+                  onChange={e => markupRef.current?.setPenWidth(Number(e.target.value))}>
+                  <option value={1}>Thin</option>
+                  <option value={3}>Medium</option>
+                  <option value={6}>Thick</option>
                 </select>
               )}
               <div className="color-options" role="radiogroup" aria-label="Color">
@@ -1465,7 +1556,7 @@ export default function App({ tabs, tabKey, upgradeNotes }: { tabs: DocumentTabs
           onClose={() => setHistoryOpen(false)} />}
         {doc && aiOpen && !focus && (
           <AiPanel
-            key={doc.sourceId ?? doc.id}
+            key={`${doc.sourceId ?? doc.id}:${doc.password ? 0 : chatGeneration}`}
             pdf={doc.pdf}
             docId={doc.sourceId ?? doc.id}
             persist={!doc.password}
@@ -1473,6 +1564,7 @@ export default function App({ tabs, tabKey, upgradeNotes }: { tabs: DocumentTabs
             context={aiContext}
             onClearContext={() => setAiContext(null)}
             onGoToPage={goTo}
+            onSettings={() => setDialog("ai-settings")}
             onClose={() => setAiOpen(false)}
           />
         )}
@@ -1501,9 +1593,17 @@ export default function App({ tabs, tabKey, upgradeNotes }: { tabs: DocumentTabs
         />
       )}
       {dialog === "info" && doc && <InfoDialog key={doc.pdf.loadingTask.docId} pdf={doc.pdf} name={doc.name} size={doc.size} onClose={() => setDialog(null)} />}
+      {printCopy && <PrintDialog pdf={printCopy.pdf} currentPage={printCopy.page} name={printCopy.name}
+        onPrint={() => { printPdfBytes(printCopy.bytes); setPrintCopy(null); }} onClose={() => setPrintCopy(null)} />}
       {dialog === "shortcuts" && <ShortcutsDialog onClose={() => setDialog(null)} />}
       {dialog === "about" && <AboutDialog onClose={() => setDialog(null)} />}
-      {dialog === "settings" && <SettingsDialog theme={theme} onTheme={setThemeTo} night={night} onNight={setNightTo}
+      {(dialog === "settings" || dialog === "ai-settings") && <SettingsDialog initialSection={dialog === "ai-settings" ? "Ask AI" : "General"}
+        theme={theme} onTheme={setThemeTo} night={night} onNight={setNightTo}
+        scanLanguages={scanLanguages} onScanLanguages={next => {
+          setScanLanguages(next);
+          try { localStorage.setItem("folio:scan-language", next.join("+")); }
+          catch { flash("Scan languages changed, but couldn't save the preference."); }
+        }}
         wheelPaging={wheelPaging} onWheelPaging={(next) => {
           setWheelPaging(next);
           try { localStorage.setItem("folio:wheel-paging", next ? "1" : "0"); }
@@ -1549,6 +1649,9 @@ export default function App({ tabs, tabKey, upgradeNotes }: { tabs: DocumentTabs
         </div>
       )}
 
+      {active && doc && backHint && !toast && !error && !dialog && !pending && !signing && !imageView && !printCopy &&
+        <div role="status"><button type="button" ref={backHintButton} className="toast link-return" onBlur={() => setBackHint(null)}
+          onClick={() => navigationRef.current?.back()}><Icon name="chevronLeft" size={15} />{backHint}</button></div>}
       {(toast || error) && (
         <div className={`toast ${error ? "error" : ""}`} onClick={() => setError(null)}>
           {error ?? toast}

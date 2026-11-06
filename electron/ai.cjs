@@ -14,6 +14,8 @@ const http = require("node:http");
 const os = require("node:os");
 const path = require("node:path");
 const { chatRequest, claudePrompt } = require("./ai-prompt.cjs");
+const { createOpenRouter } = require("./openrouter.cjs");
+const { claudeChildPath, findClaude: lookUpClaude } = require("./claude-path.cjs");
 
 const AUTH_ISSUER = "https://auth.openai.com";
 const AUTHORIZE_URL = "https://auth.openai.com/api/accounts/authorize";
@@ -26,6 +28,7 @@ const REFRESH_FAILURES = new Set(["invalid_grant", "invalid_refresh_token", "tok
 
 const dir = () => path.join(app.getPath("userData"), "ai");
 const file = (name) => path.join(dir(), name);
+const openRouter = createOpenRouter({ net, safeStorage, file, writeAtomic });
 const b64url = (buf) => Buffer.from(buf).toString("base64url");
 
 function writeAtomic(name, contents) {
@@ -333,19 +336,14 @@ function run(cmd, args, timeout = 10_000) {
 function claudeEnv() {
   const env = { ...process.env };
   delete env.ELECTRON_RUN_AS_NODE;
+  if (claudePath && process.platform !== "win32") env.PATH = claudeChildPath(env.PATH, claudePath);
   return env;
 }
 
 let claudePath;
 async function findClaude() {
   if (claudePath) return claudePath;
-  const name = process.platform === "win32" ? "claude.exe" : "claude";
-  // Search absolute PATH entries ourselves (never the current folder, which `where.exe` checks first),
-  // with Claude Code's default install location first. Only native executables: .cmd/.bat shims would need a shell.
-  const dirs = [path.join(os.homedir(), ".local", "bin"), ...String(process.env.PATH ?? "").split(path.delimiter)]
-    .map((d) => d.trim().replace(/^"|"$/g, ""))
-    .filter((d) => d && path.isAbsolute(d));
-  claudePath = dirs.map((d) => path.join(d, name)).find((c) => { try { return fs.statSync(c).isFile(); } catch { return false; } }) ?? null;
+  claudePath = lookUpClaude({ platform: process.platform, home: os.homedir(), envPath: process.env.PATH });
   return claudePath;
 }
 
@@ -453,8 +451,8 @@ const active = new Map();
 const MAX_CHARS = 1_500_000;
 
 function validRequest(req) {
-  return req && typeof req.id === "string" && req.id.length < 100 && (req.provider === "chatgpt" || req.provider === "claude")
-    && typeof req.model === "string" && req.model.length < 100
+  return req && typeof req.id === "string" && req.id.length < 100 && ["chatgpt", "claude", "openrouter"].includes(req.provider)
+    && typeof req.model === "string" && req.model.length <= (req.provider === "openrouter" ? 256 : 99)
     && typeof req.document?.name === "string" && typeof req.document.text === "string" && typeof req.document.truncated === "boolean"
     && Array.isArray(req.messages) && req.messages.length > 0 && req.messages.length < 200
     && req.messages.every((m) => m && (m.role === "user" || m.role === "assistant") && typeof m.content === "string"
@@ -466,7 +464,20 @@ const MAX_ACTIVE = 2;
 
 function register(handle, send) {
   cleanStaleClaudeFolders();
-  handle("folio:ai-status", async () => ({ chatgpt: await chatgptStatus(), claude: await claudeStatus() }));
+  handle("folio:ai-status", async () => ({ chatgpt: await chatgptStatus(), claude: await claudeStatus(), openrouter: openRouter.status() }));
+  handle("folio:ai-router-key", async (_event, action, key) => {
+    try {
+      if (action === "save") await openRouter.save(key);
+      else if (action === "remove") await openRouter.remove();
+      else if (action === "check") await openRouter.check();
+      else throw new Error("Unknown key action.");
+      return { ok: true, configured: openRouter.status().configured };
+    } catch (error) { return { ok: false, error: error.message }; }
+  });
+  handle("folio:ai-router-models", async () => {
+    try { return { ok: true, models: await openRouter.models() }; }
+    catch { return { ok: false, error: "Couldn't load OpenRouter models. Check your key and connection, or enter a model ID." }; }
+  });
   handle("folio:ai-chatgpt-signin", async () => {
     try { return { ok: true, status: await signInChatGPT() }; } catch (e) { return { ok: false, error: e.message }; }
   });
@@ -488,7 +499,7 @@ function register(handle, send) {
     const controller = new AbortController();
     active.set(req.id, controller);
     const emit = (text) => send("folio:ai-event", { id: req.id, type: "delta", text });
-    const ask = req.provider === "chatgpt" ? askChatGPT : askClaude;
+    const ask = { chatgpt: askChatGPT, claude: askClaude, openrouter: openRouter.ask }[req.provider];
     const { name, text, truncated } = req.document;
     const messages = req.messages.map(({ role, content, context }) => context
       ? { role, content, context: { text: context.text, page: context.page } } : { role, content });

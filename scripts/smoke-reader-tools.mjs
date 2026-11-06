@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { deflateSync } from "node:zlib";
+import ocrCatalog from "../electron/ocr-models.json" with { type: "json" };
 
 // A two-page form with a text field on its first page.
 function formPdf() {
@@ -36,6 +37,8 @@ async function checkScanSelection(app, page) {
     ctx.font = "56px sans-serif";
     ctx.fillText("Select these words", 100, 225);
     ctx.fillText("from a scanned page.", 100, 300);
+    ctx.fillText("Grüße aus Köln", 100, 375);
+    ctx.fillText("El niño español", 100, 450);
     const rgba = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
     const bits = new Uint8Array(canvas.width * canvas.height / 8);
     for (let i = 0; i < canvas.width * canvas.height; i++) {
@@ -139,6 +142,84 @@ async function checkScanSelection(app, page) {
   await page.locator('.page[data-page-number="4"] .ocr-word').first().waitFor();
   assert.equal(await status.innerText(), "");
   console.log("ok  background OCR prepares unvisited scans, prioritizes page jumps, and shows selectable text in dark mode");
+
+  // Exercise the real desktop download and checksum path without reaching GitHub from CI.
+  await app.evaluate(({ net }, { base, fixtures }) => {
+    const original = net.fetch;
+    const requests = [];
+    net.fetch = async (url, options) => {
+      if (!String(url).startsWith(base)) return original.call(net, url, options);
+      const file = url.slice(base.length);
+      if (!Object.hasOwn(fixtures, file)) throw new Error("Unexpected language download");
+      requests.push(file);
+      const bytes = process.getBuiltinModule("fs").readFileSync(fixtures[file]);
+      if (requests.length === 1) bytes[0] ^= 1;
+      return new Response(bytes);
+    };
+    globalThis.finishModelDownloads = () => { net.fetch = original; return requests; };
+  }, { base: ocrCatalog.baseUrl, fixtures: Object.fromEntries(["spa", "deu"].map(code => {
+    const file = code + ".traineddata.gz";
+    return [file, path.resolve(import.meta.dirname, "../node_modules/@tesseract.js-data", code, "4.0.0_best_int", file)];
+  })) });
+  const settingsShortcut = process.platform === "darwin" ? "Meta+Comma" : "Control+Comma";
+  await page.keyboard.press(settingsShortcut);
+  const picker = page.getByRole("button", { name: /^Scan languages:/ });
+  await picker.click();
+  const languages = page.getByRole("dialog", { name: "Choose scan languages" });
+  const search = languages.getByRole("searchbox");
+  const apply = languages.getByRole("button", { name: "Apply" });
+  const download = languages.getByRole("button", { name: /^Download ·/ });
+  assert.equal(await languages.getByRole("checkbox").count(), Object.keys(ocrCatalog.languages).length);
+  assert.ok(await languages.getByRole("checkbox", { name: "English", exact: true }).isChecked());
+  await languages.getByRole("checkbox", { name: "English", exact: true }).uncheck();
+  assert.ok(await apply.isDisabled());
+  await search.fill("espanol");
+  await languages.getByRole("checkbox", { name: "Spanish", exact: true }).check();
+  await download.click();
+  await languages.getByRole("alert").waitFor();
+  assert.equal(await picker.innerText(), "English", "a damaged pack must not replace the active selection");
+  await download.click();
+  await languages.waitFor({ state: "hidden" });
+  await page.keyboard.press("Escape");
+  const currentScan = page.locator('.page[data-page-number="4"] .textLayer');
+  await currentScan.getByText("niño", { exact: true }).waitFor({ timeout: 45_000 });
+  await page.keyboard.press(settingsShortcut);
+  await picker.click();
+  await search.fill("Deutsch");
+  await languages.getByRole("checkbox", { name: "German", exact: true }).check();
+  await download.click();
+  await languages.waitFor({ state: "hidden" });
+  await page.keyboard.press("Escape");
+  await currentScan.getByText("Grüße", { exact: true }).waitFor({ timeout: 45_000 });
+  await currentScan.getByText("niño", { exact: true }).waitFor();
+  assert.equal(await page.evaluate(() => localStorage.getItem("folio:scan-language")), "spa+deu");
+  await page.keyboard.press(settingsShortcut);
+  await picker.click();
+  await languages.getByRole("checkbox", { name: "German", exact: true }).uncheck();
+  // Change languages again while the preceding run's scan image is still being encoded.
+  await page.evaluate(() => {
+    const toBlob = HTMLCanvasElement.prototype.toBlob;
+    HTMLCanvasElement.prototype.toBlob = function (callback, ...options) {
+      if (this.isConnected) return toBlob.call(this, callback, ...options);
+      HTMLCanvasElement.prototype.toBlob = toBlob;
+      return toBlob.call(this, blob => { window.finishScanEncoding = () => callback(blob); }, ...options);
+    };
+  });
+  await apply.click();
+  await languages.waitFor({ state: "hidden" });
+  await page.waitForFunction(() => typeof window.finishScanEncoding === "function");
+  await picker.click();
+  await search.fill("German");
+  await languages.getByRole("checkbox", { name: "German", exact: true }).check();
+  await apply.click();
+  await languages.waitFor({ state: "hidden" });
+  await page.evaluate(() => window.finishScanEncoding());
+  await page.keyboard.press("Escape");
+  await currentScan.getByText("Grüße", { exact: true }).waitFor({ timeout: 45_000 });
+  assert.deepEqual(await app.evaluate(() => globalThis.finishModelDownloads()), ["spa.traineddata.gz", "spa.traineddata.gz", "deu.traineddata.gz"]);
+  await goTo(1);
+  assert.equal((await mixed.innerText()).trim(), "Embedded text");
+  console.log("ok  scan languages verify downloads, retry a corrupt pack, and reuse saved models for mixed-language scans");
 }
 
 async function captureDownload(app, file) {
@@ -148,6 +229,58 @@ async function captureDownload(app, file) {
       item.once("done", (_, state) => resolve(state));
     }));
   }, file);
+}
+
+async function checkPenDrawing(app, page, folder) {
+  const blank = testPdf(["<< /Type /Catalog /Pages 2 0 R >>", "<< /Type /Pages /Count 1 /Kids [3 0 R] >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 480 320] /Resources << >> >>"]);
+  await app.evaluate(({ BrowserWindow }, pdf) => BrowserWindow.getAllWindows()[0].webContents.send(
+    "folio:open-file", { name: "Pen widths.pdf", data: Buffer.from(pdf) }), blank);
+  await page.window.waitForFunction(() => document.title.startsWith("Pen widths.pdf"));
+  await page.getByTitle("Draw (D)").click();
+  const width = page.getByRole("combobox", { name: "Pen width" });
+  const layer = page.locator(".page .annotationEditorLayer.inkEditing");
+  await layer.waitFor();
+  assert.equal(await width.inputValue(), "1");
+  const box = await layer.boundingBox();
+  const x = box.x + box.width * 0.2;
+  for (const [index, name] of ["Thin", "Medium", "Thick"].entries()) {
+    await width.selectOption({ label: name });
+    const y = box.y + box.height * (0.3 + index * 0.15);
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x + 25, y - 10);
+    await page.mouse.move(x + 50, y + 10);
+    await page.mouse.move(x + 100, y);
+    await page.mouse.up();
+    // An older ink fitter showed the tip while drawing, then pulled it halfway back on release.
+    const end = await page.locator(".page svg.draw").last().evaluate(svg => {
+      const path = svg.querySelector("path");
+      const p = path.getPointAtLength(path.getTotalLength()).matrixTransform(svg.getScreenCTM());
+      return { x: p.x, y: p.y };
+    });
+    assert.ok(Math.hypot(end.x - x - 100, end.y - y) < 4, `${name} pen ended away from the release point`);
+  }
+  const tool = page.getByRole("combobox", { name: "Drawing tool" });
+  await tool.selectOption("Rectangle");
+  assert.equal(await width.count(), 0);
+  await tool.selectOption("Pen");
+  assert.equal(await width.inputValue(), "6");
+  await page.getByRole("button", { name: "Done", exact: true }).click();
+  const file = path.join(folder, "pen-widths.pdf");
+  await captureDownload(app, file);
+  await page.keyboard.press("ControlOrMeta+s");
+  assert.equal(await app.evaluate(() => globalThis.folioReordered), "completed");
+  const savedWidths = await page.evaluate(async bytes => {
+    const task = pdfjsLib.getDocument({ data: Uint8Array.from(bytes) });
+    try {
+      const pdf = await task.promise;
+      const annotations = await (await pdf.getPage(1)).getAnnotations();
+      return annotations.filter(a => a.subtype === "Ink").map(a => a.borderStyle.rawWidth).sort((a, b) => a - b);
+    } finally { await task.destroy(); }
+  }, Array.from(readFileSync(file)));
+  assert.deepEqual(savedWidths, [1, 3, 6]);
+  console.log("ok  freehand strokes keep their release points and three independent pen widths in the saved PDF");
 }
 
 async function checkContentEditing(app, page, folder, shots) {
@@ -294,6 +427,137 @@ async function checkContentEditing(app, page, folder, shots) {
   console.log("ok  fragmented embedded-font text in Folio's sample edits as a line and reopens in the reader");
 }
 
+export function linkHistoryPdf() {
+  const content = "BT /F 16 Tf 40 1100 Td (Follow a PDF link, then go Back.) Tj ET";
+  return testPdf([
+    "<< /Type /Catalog /Pages 2 0 R /Names << /Dests << /Names [(second) [4 0 R /XYZ 0 1000 1.5] (third) [5 0 R /XYZ 0 960 1.25]] >> >> /Outlines 13 0 R >>",
+    "<< /Type /Pages /Count 3 /Kids [3 0 R 4 0 R 5 0 R] >>",
+    ...["7 0 R 8 0 R 12 0 R 15 0 R", "9 0 R", "10 0 R"].map(annots => `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 1200] /Resources << /Font << /F 6 0 R >> >> /Contents 11 0 R /Annots [${annots}] >>`),
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    "<< /Type /Annot /Subtype /Link /Rect [40 1000 160 1040] /Dest (second) >>",
+    "<< /Type /Annot /Subtype /Link /Rect [200 1000 320 1040] /Dest (third) >>",
+    "<< /Type /Annot /Subtype /Link /Rect [40 1000 160 1040] /Dest (third) >>",
+    "<< /Type /Annot /Subtype /Link /Rect [40 1000 160 1040] /A << /S /Named /N /GoBack >> >>",
+    `<< /Length ${content.length} >>\nstream\n${content}\nendstream`,
+    "<< /Type /Annot /Subtype /Link /Rect [360 1000 480 1040] /A << /S /Named /N /GoForward >> >>",
+    "<< /Type /Outlines /First 14 0 R /Last 14 0 R /Count 1 >>",
+    "<< /Title (Third page) /Parent 13 0 R /Dest (third) >>",
+    "<< /Type /Annot /Subtype /Link /Rect [40 900 160 940] /Dest [3 0 R /XYZ 0 500 1.25] >>",
+  ]);
+}
+
+async function checkLinkHistory(app, page, shots) {
+  const viewport = await page.window.evaluate(() => ({ width: innerWidth, height: innerHeight }));
+  await page.window.setViewportSize({ width: 1000, height: 800 });
+  const pdf = linkHistoryPdf();
+  const open = name => app.evaluate(({ BrowserWindow }, { name, pdf }) => BrowserWindow.getAllWindows()[0].webContents.send(
+    "folio:open-file", { name, data: Buffer.from(pdf) }), { name, pdf });
+  await open("Link history.pdf");
+  await page.window.waitForFunction(() => document.title.startsWith("Link history.pdf"));
+  const more = page.getByRole("button", { name: "More", exact: true });
+  const back = page.getByRole("menuitem", { name: /^Back\b/ });
+  const forward = page.getByRole("menuitem", { name: /^Forward\b/ });
+  const choose = async item => { await more.click(); await item.click(); };
+  const checkMenu = async (canBack, canForward) => {
+    await more.click();
+    assert.equal(await back.count(), Number(canBack));
+    assert.equal(await forward.count(), Number(canForward));
+    await page.keyboard.press("Escape");
+  };
+  const pageNumber = page.getByLabel("Page number");
+  const at = n => page.waitForFunction(n => document.querySelector('[aria-label="Page number"]').value === String(n), n);
+  await checkMenu(false, false);
+  const link = (n, name) => page.locator(`.page[data-page-number="${n}"] .annotationLayer a[href$="#${name}"]`);
+  const position = () => page.locator(".viewer-container").evaluate(el => ({ top: el.scrollTop, left: el.scrollLeft }));
+  const zoom = () => page.getByTitle("Zoom", { exact: true }).innerText();
+  await link(1, "second").waitFor();
+  await page.locator(".viewer-container").evaluate(el => { el.scrollTop = 50; });
+  const start = await position(), startZoom = await zoom();
+  const record = process.env.FOLIO_LINK_VIDEO === "1";
+  if (record) {
+    await page.window.screencast.start({ path: path.join(shots, "link-history.webm"), size: { width: 1000, height: 800 }, fps: 12 });
+    await page.waitForTimeout(800);
+  }
+  await link(1, "second").click(); await at(2);
+  const hint = page.getByRole("button", { name: "Back to page 1", exact: true });
+  await hint.waitFor();
+  if (record) await page.waitForTimeout(900);
+  await more.click(); await back.waitFor();
+  assert.equal(await forward.count(), 0);
+  await page.screenshot({ path: path.join(shots, "link-history-menu-and-hint.png") });
+  if (record) await page.waitForTimeout(800);
+  await page.keyboard.press("Escape");
+  await hint.click(); await at(1);
+  if (record) {
+    await more.click(); await forward.waitFor();
+    await page.waitForTimeout(1000);
+    await page.window.screencast.stop();
+    await page.keyboard.press("Escape");
+  }
+  assert.ok(Math.abs((await position()).top - start.top) <= 3);
+  await page.locator('.page[data-page-number="1"] .annotationLayer a').nth(3).click();
+  assert.equal(await page.locator(".link-return").count(), 0, "the first-use hint repeated");
+  await choose(back); await at(1);
+  assert.ok(Math.abs((await position()).top - start.top) <= 3);
+  await link(1, "second").click(); await at(2);
+  await checkMenu(true, false);
+  await page.locator(".viewer-container").evaluate(el => { el.scrollTop += 60; el.scrollLeft = 60; });
+  const target = await position(), targetZoom = await zoom();
+  assert.ok(target.left > 0, "the fixture exercises horizontal scrolling");
+  await page.locator(".viewer-container").focus();
+  await page.keyboard.press("Alt+ArrowLeft"); await at(1);
+  assert.ok(Math.abs((await position()).top - start.top) <= 3);
+  assert.equal(await zoom(), startZoom);
+  await page.keyboard.press("Alt+ArrowRight"); await at(2);
+  assert.ok(Math.abs((await position()).top - target.top) <= 3);
+  assert.ok(Math.abs((await position()).left - target.left) <= 3);
+  assert.equal(await zoom(), targetZoom);
+  // A shortcut in an editable control or dialog must not traverse PDF locations.
+  await pageNumber.focus(); await page.keyboard.press("Alt+ArrowLeft");
+  assert.equal(await pageNumber.inputValue(), "2");
+  await page.locator(".viewer-container").focus();
+  await page.keyboard.press("?");
+  const shortcuts = page.getByRole("dialog", { name: "Keyboard shortcuts" });
+  await shortcuts.getByText("Back / forward through links", { exact: true }).waitFor();
+  await page.keyboard.press("Alt+ArrowLeft");
+  assert.equal(await pageNumber.inputValue(), "2");
+  await shortcuts.waitFor(); await page.keyboard.press("Escape");
+  await choose(back); await at(1);
+  await link(1, "third").click(); await at(3);
+  await checkMenu(true, false);
+  await page.locator('.page[data-page-number="3"][data-loaded="true"] .canvasWrapper canvas').waitFor();
+  await page.screenshot({ path: path.join(shots, "after-link-history.png") });
+  await choose(back); await at(1);
+  await choose(forward); await at(3);
+  const namedBack = page.locator('.page[data-page-number="3"] .annotationLayer a');
+  await namedBack.click(); await at(1);
+  await page.locator('.page[data-page-number="1"] .annotationLayer a').nth(2).click(); await at(3);
+  await choose(back); await at(1);
+  const sidebar = page.getByRole("button", { name: /Toggle sidebar/ });
+  if (await sidebar.getAttribute("aria-pressed") !== "true") await sidebar.click();
+  await page.getByRole("tab", { name: "Outline" }).click();
+  await page.getByRole("button", { name: "Third page", exact: true }).click(); await at(3);
+  await choose(back); await at(1);
+  const sourceTitle = await page.title();
+  await page.getByRole("button", { name: "More", exact: true }).click();
+  await page.getByRole("menuitem", { name: /New tab/ }).click();
+  await page.getByRole("button", { name: /Try a sample/ }).click();
+  await checkMenu(false, false);
+  await page.keyboard.press("Control+Shift+Tab");
+  assert.equal(await page.title(), sourceTitle);
+  await checkMenu(false, true);
+  await page.locator(".viewer-container").focus();
+  await page.keyboard.press("Alt+ArrowRight"); await at(3);
+  await page.window.setViewportSize({ width: 420, height: 800 });
+  await page.window.waitForFunction(() => innerWidth <= 420);
+  const box = await page.getByRole("toolbar", { name: "Navigation" }).boundingBox();
+  const width = await page.window.evaluate(() => innerWidth);
+  assert.ok(box && box.x >= 0 && box.x + box.width <= width, `the navigation controls fit a narrow window: ${JSON.stringify({ width, box })}`);
+  await page.screenshot({ path: path.join(shots, "link-history-narrow.png") });
+  await page.window.setViewportSize(viewport);
+  console.log("ok  internal links and outlines support a one-time Back hint, contextual More commands, per-tab position and zoom, shortcuts and forward branching");
+}
+
 export async function checkReaderTools(app, page, folder, shots) {
   const settings = () => page.keyboard.press(process.platform === "darwin" ? "Meta+Comma" : "Control+Comma");
   const wheelSwitch = page.getByRole("switch", { name: "Scroll one page at a time" });
@@ -421,4 +685,6 @@ export async function checkReaderTools(app, page, folder, shots) {
   console.log("ok  the normal Save shortcut and Open reordered copy preserve filled form fields");
   await checkScanSelection(app, page);
   await checkContentEditing(app, page, folder, shots);
+  await checkLinkHistory(app, page, shots);
+  await checkPenDrawing(app, page, folder);
 }

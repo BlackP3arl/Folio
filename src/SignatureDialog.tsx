@@ -230,7 +230,7 @@ export function SignatureDialog({ pdf, pageNumber, targets, onApprove, onClose }
                 if (Math.abs(start[0] - end[0]) < 8 || Math.abs(start[1] - end[1]) < 8) setManualRect(null);
                 else setPlaceholder(start, end);
               }} onPointerCancel={() => { placeholderStart.current = null; setManualRect(null); }} onKeyDown={event => {
-                if (!ready || targetId !== "manual" || !["Enter", " "].includes(event.key)) return;
+                if (event.altKey || !ready || targetId !== "manual" || !["Enter", " "].includes(event.key)) return;
                 event.preventDefault();
                 const [left, bottom, right, top] = preview.viewport.viewBox;
                 setPlaceholder([left + (right - left) * .25, bottom + (top - bottom) * .42], [left + (right - left) * .75, bottom + (top - bottom) * .54]);
