@@ -1,0 +1,449 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		1110086CE477308724D7E50E /* PDFDocumentStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 852B9077BA14422A2B4EEE07 /* PDFDocumentStore.swift */; };
+		1F03D042309B3AB700B9F426 /* PDFKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1ECAF5CB09B1A018E16C84AD /* PDFKit.framework */; };
+		65B15BE82EDE2D7E62331EB1 /* PDFKitView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E132A09CE4FF79D9F31ADA9F /* PDFKitView.swift */; };
+		792B3CD299E815E94A1172E6 /* FolioNativeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5EE2E153208D0BFBBD65547F /* FolioNativeTests.swift */; };
+		8712E531D0F8B669FD964940 /* ThumbnailSidebar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D67EC87A5D0C7DDB8CA6555 /* ThumbnailSidebar.swift */; };
+		A40AB92F46427AE9071CE45A /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F83507E1FE1BC94FEF155E5 /* ContentView.swift */; };
+		E80A052EF8AF3241C287D2F7 /* FolioNativeApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14D3CF6D2DDBBD3EF837F1CB /* FolioNativeApp.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		6B9A0C916EAA20D9A70C411E /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 728B61557F1BB597FEEB3CA8 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 15035B83AC3D5EA0C4ECD9B9;
+			remoteInfo = FolioNative;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		14D3CF6D2DDBBD3EF837F1CB /* FolioNativeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolioNativeApp.swift; sourceTree = "<group>"; };
+		1ECAF5CB09B1A018E16C84AD /* PDFKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = PDFKit.framework; path = System/Library/Frameworks/PDFKit.framework; sourceTree = SDKROOT; };
+		1F83507E1FE1BC94FEF155E5 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		3201DA62221E58B420DFCEAF /* FolioNative.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = FolioNative.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		5EE2E153208D0BFBBD65547F /* FolioNativeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolioNativeTests.swift; sourceTree = "<group>"; };
+		852B9077BA14422A2B4EEE07 /* PDFDocumentStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFDocumentStore.swift; sourceTree = "<group>"; };
+		99DA2CC4979710B633D9CF90 /* FolioNativeTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FolioNativeTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		9D67EC87A5D0C7DDB8CA6555 /* ThumbnailSidebar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThumbnailSidebar.swift; sourceTree = "<group>"; };
+		E132A09CE4FF79D9F31ADA9F /* PDFKitView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFKitView.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		47F67A7B311BF12F002D44DE /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1F03D042309B3AB700B9F426 /* PDFKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		27F61CDF6145B4B3080827B9 /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				1F83507E1FE1BC94FEF155E5 /* ContentView.swift */,
+				14D3CF6D2DDBBD3EF837F1CB /* FolioNativeApp.swift */,
+				852B9077BA14422A2B4EEE07 /* PDFDocumentStore.swift */,
+				E132A09CE4FF79D9F31ADA9F /* PDFKitView.swift */,
+				9D67EC87A5D0C7DDB8CA6555 /* ThumbnailSidebar.swift */,
+			);
+			name = Sources;
+			path = FolioNative/Sources;
+			sourceTree = "<group>";
+		};
+		B22B748F73D805C28ECAC9CB = {
+			isa = PBXGroup;
+			children = (
+				E5C786EA658142B396CD5218 /* FolioNativeTests */,
+				27F61CDF6145B4B3080827B9 /* Sources */,
+				FBCFD988A635C8B09435958A /* Frameworks */,
+				FC923869D772618914FA5A0E /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		E5C786EA658142B396CD5218 /* FolioNativeTests */ = {
+			isa = PBXGroup;
+			children = (
+				5EE2E153208D0BFBBD65547F /* FolioNativeTests.swift */,
+			);
+			path = FolioNativeTests;
+			sourceTree = "<group>";
+		};
+		FBCFD988A635C8B09435958A /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				1ECAF5CB09B1A018E16C84AD /* PDFKit.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		FC923869D772618914FA5A0E /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				3201DA62221E58B420DFCEAF /* FolioNative.app */,
+				99DA2CC4979710B633D9CF90 /* FolioNativeTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		15035B83AC3D5EA0C4ECD9B9 /* FolioNative */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A39A0859D4BA7E3B16C5B67E /* Build configuration list for PBXNativeTarget "FolioNative" */;
+			buildPhases = (
+				430FF4E156A79EE5EA84D4C6 /* Sources */,
+				47F67A7B311BF12F002D44DE /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = FolioNative;
+			packageProductDependencies = (
+			);
+			productName = FolioNative;
+			productReference = 3201DA62221E58B420DFCEAF /* FolioNative.app */;
+			productType = "com.apple.product-type.application";
+		};
+		392758B8064D71CD5A001D2F /* FolioNativeTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 45D4337295B2F8A59B13C717 /* Build configuration list for PBXNativeTarget "FolioNativeTests" */;
+			buildPhases = (
+				F48C0DBA282A09DC97EDD2CE /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				4A1CE0585F20E24AED9572D1 /* PBXTargetDependency */,
+			);
+			name = FolioNativeTests;
+			packageProductDependencies = (
+			);
+			productName = FolioNativeTests;
+			productReference = 99DA2CC4979710B633D9CF90 /* FolioNativeTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		728B61557F1BB597FEEB3CA8 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 2720;
+				TargetAttributes = {
+					15035B83AC3D5EA0C4ECD9B9 = {
+						ProvisioningStyle = Automatic;
+					};
+					392758B8064D71CD5A001D2F = {
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 6E61BCDEB9B34232F9A6E16C /* Build configuration list for PBXProject "FolioNative" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = B22B748F73D805C28ECAC9CB;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = FC923869D772618914FA5A0E /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				15035B83AC3D5EA0C4ECD9B9 /* FolioNative */,
+				392758B8064D71CD5A001D2F /* FolioNativeTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		430FF4E156A79EE5EA84D4C6 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A40AB92F46427AE9071CE45A /* ContentView.swift in Sources */,
+				E80A052EF8AF3241C287D2F7 /* FolioNativeApp.swift in Sources */,
+				1110086CE477308724D7E50E /* PDFDocumentStore.swift in Sources */,
+				65B15BE82EDE2D7E62331EB1 /* PDFKitView.swift in Sources */,
+				8712E531D0F8B669FD964940 /* ThumbnailSidebar.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F48C0DBA282A09DC97EDD2CE /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				792B3CD299E815E94A1172E6 /* FolioNativeTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		4A1CE0585F20E24AED9572D1 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 15035B83AC3D5EA0C4ECD9B9 /* FolioNative */;
+			targetProxy = 6B9A0C916EAA20D9A70C411E /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		1E9C98CE3185BCDD44C2EA04 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = FolioNative/Resources/FolioNative.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				DEAD_CODE_STRIPPING = YES;
+				INFOPLIST_FILE = FolioNative/Resources/Info.plist;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.2.5;
+				PRODUCT_BUNDLE_IDENTIFIER = app.folio.native;
+				PRODUCT_MODULE_NAME = FolioNative;
+				PRODUCT_NAME = FolioNative;
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		2F70951FF5173E4BA467CCF0 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		5CA4AA6DD846A4286CFE58DC /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				DEAD_CODE_STRIPPING = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = app.folio.native.tests;
+				SDKROOT = macosx;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/FolioNative.app/Contents/MacOS/FolioNative";
+			};
+			name = Release;
+		};
+		73C12E426E5EF5C5ACF426C8 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				DEAD_CODE_STRIPPING = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = app.folio.native.tests;
+				SDKROOT = macosx;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/FolioNative.app/Contents/MacOS/FolioNative";
+			};
+			name = Debug;
+		};
+		A196B06562605F2DF4605B44 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		AC214E1EFAA6DEB1BAB43AF8 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = FolioNative/Resources/FolioNative.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				DEAD_CODE_STRIPPING = YES;
+				INFOPLIST_FILE = FolioNative/Resources/Info.plist;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.2.5;
+				PRODUCT_BUNDLE_IDENTIFIER = app.folio.native;
+				PRODUCT_MODULE_NAME = FolioNative;
+				PRODUCT_NAME = FolioNative;
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		45D4337295B2F8A59B13C717 /* Build configuration list for PBXNativeTarget "FolioNativeTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				73C12E426E5EF5C5ACF426C8 /* Debug */,
+				5CA4AA6DD846A4286CFE58DC /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		6E61BCDEB9B34232F9A6E16C /* Build configuration list for PBXProject "FolioNative" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A196B06562605F2DF4605B44 /* Debug */,
+				2F70951FF5173E4BA467CCF0 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		A39A0859D4BA7E3B16C5B67E /* Build configuration list for PBXNativeTarget "FolioNative" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AC214E1EFAA6DEB1BAB43AF8 /* Debug */,
+				1E9C98CE3185BCDD44C2EA04 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 728B61557F1BB597FEEB3CA8 /* Project object */;
+}

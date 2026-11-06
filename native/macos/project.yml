@@ -1,0 +1,48 @@
+name: FolioNative
+options:
+  bundleIdPrefix: app.folio
+  deploymentTarget:
+    macOS: "14.0"
+  xcodeVersion: "27.0"
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+    CODE_SIGN_STYLE: Automatic
+    ENABLE_HARDENED_RUNTIME: YES
+    GENERATE_INFOPLIST_FILE: NO
+targets:
+  FolioNative:
+    type: application
+    platform: macOS
+    sources:
+      - path: FolioNative/Sources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.folio.native
+        PRODUCT_NAME: FolioNative
+        PRODUCT_MODULE_NAME: FolioNative
+        INFOPLIST_FILE: FolioNative/Resources/Info.plist
+        CODE_SIGN_ENTITLEMENTS: FolioNative/Resources/FolioNative.entitlements
+        LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/../Frameworks"
+    dependencies:
+      - sdk: PDFKit.framework
+  FolioNativeTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: FolioNativeTests
+    dependencies:
+      - target: FolioNative
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.folio.native.tests
+schemes:
+  FolioNative:
+    build:
+      targets:
+        FolioNative: all
+        FolioNativeTests: [test]
+    test:
+      targets:
+        - FolioNativeTests

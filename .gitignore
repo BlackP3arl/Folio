@@ -6,3 +6,6 @@ release
 release-test
 release-*/
 dev-app-update.yml
+.DS_Store
+native/macos/.derived-data
+xcuserdata/
